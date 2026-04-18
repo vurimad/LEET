@@ -1,0 +1,11 @@
+[package]
+name = "leet_math"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+leet_core = { workspace = true }
+glam = { workspace = true }

@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/leet",
+    "crates/leet_core",
+    "crates/leet_app",
+    "crates/leet_bridge",
+    "crates/leet_math",
+    "crates/leet_log",
+    "crates/leet_ecs",
+    "crates/leet_jobs",
+    "crates/leet_macros",
+    "crates/leet_display",
+    "examples/managed_mode",
+    "examples/manual_mode",
+    "examples/event_driven",
+    "crates/leet_renderer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["LEET Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/leet"
+
+[workspace.dependencies]
+# Shared dependencies across crates
+leet = { path = "crates/leet" }
+leet_core = { path = "crates/leet_core" }
+leet_math = { path = "crates/leet_math" }
+leet_ecs = { path = "crates/leet_ecs" }
+leet_app = { path = "crates/leet_app" }
+leet_bridge = { path = "crates/leet_bridge" }
+leet_macros = { path = "crates/leet_macros" }
+leet_log = { path = "crates/leet_log" }
+leet_display = { path = "crates/leet_display" }
+leet_renderer = { path = "crates/leet_renderer" }
+leet_jobs = { path = "crates/leet_jobs" }
+
+#vendor dependencies
+# Add external deps here (single source of truth for versions)
+winit = "0.29"
+wgpu = "22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+anyhow = "1"
+crossbeam-queue = "0.3"
+thread-priority = "3"
+core_affinity = "0.8"
+glam = "0.29"
+flecs_ecs = "0.2.2"
+
+[profile.dev]
+opt-level = 1  # Slight optimization for game dev performance
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = false
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,13 @@
+[package]
+name = "example_event_driven"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "event_driven"
+path = "src/main.rs"
+
+[dependencies]
+leet_display = { path = "../../crates/leet_display" }
+leet_core = { path = "../../crates/leet_core" }
+leet_log = { path = "../../crates/leet_log" }
