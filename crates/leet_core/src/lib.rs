@@ -1,45 +1,49 @@
-//! LEET Core - Fundamental types, traits, and utilities
-//!
-//! This crate provides the foundation for the LEET game engine.
+//! LEET Core - shared error and result types.
 
-pub mod engine_clock;
-
-pub use engine_clock::EngineClock;
-
-use thiserror::Error;
+use std::{error::Error, fmt};
 
 /// The central LEET error type.
-///
-/// All engine crates return this type (or convert into it).
-/// Game developers receive this via `anyhow::Result` in the `leet` prelude.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum Leeror {
-    #[error("Initialization failed: {0}")]
     Init(String),
-
-    #[error("Configuration error: {0}")]
     Config(String),
-
-    #[error("Validation error: {0}")]
     Validation(String),
-
-    #[error("Missing resource: {0}")]
     MissingResource(String),
-
-    #[error("Runtime error: {0}")]
     Runtime(String),
-
-    #[error("Unexpected error: {0}")]
     Unexpected(String),
-
-    #[error("I/O error: {source}")]
-    Io {
-        #[from]
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
 }
 
-/// Engine-wide Result alias.
+impl fmt::Display for Leeror {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Init(message) => write!(f, "Initialization failed: {message}"),
+            Self::Config(message) => write!(f, "Configuration error: {message}"),
+            Self::Validation(message) => write!(f, "Validation error: {message}"),
+            Self::MissingResource(message) => write!(f, "Missing resource: {message}"),
+            Self::Runtime(message) => write!(f, "Runtime error: {message}"),
+            Self::Unexpected(message) => write!(f, "Unexpected error: {message}"),
+            Self::Io { source } => write!(f, "I/O error: {source}"),
+        }
+    }
+}
+
+impl Error for Leeror {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Io { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for Leeror {
+    fn from(source: std::io::Error) -> Self {
+        Self::Io { source }
+    }
+}
+
+/// Engine-wide result alias.
 pub type LeetResult<T> = std::result::Result<T, Leeror>;
 
 #[cfg(test)]

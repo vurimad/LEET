@@ -1,4 +1,5 @@
-// Re-export so other crates just use leet_log::info! etc.
+//! LEET logging surface.
+
 pub use tracing::{debug, error, info, trace, warn};
 
 #[macro_export]
@@ -12,7 +13,7 @@ macro_rules! LeetFatal {
 
 pub fn init() {
     let _ = tracing_subscriber::fmt()
-        .with_target(false) // don't show module path
-        .with_level(true) // show log level
+        .with_target(false)
+        .with_level(true)
         .try_init();
 }

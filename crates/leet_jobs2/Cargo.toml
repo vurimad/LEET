@@ -1,0 +1,11 @@
+[package]
+name = "leet_jobs2"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+bevy = ["dep:bevy_ecs"]
+
+[dependencies]
+bevy_ecs = { workspace = true, optional = true }

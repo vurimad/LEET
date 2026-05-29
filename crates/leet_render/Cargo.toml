@@ -1,0 +1,29 @@
+[package]
+name = "leet_render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-channel = { workspace = true }
+bytemuck = { workspace = true }
+bevy_a11y = { workspace = true }
+bevy_app = { workspace = true }
+bevy_asset = { workspace = true }
+bevy_camera = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_image = { workspace = true }
+bevy_input = { workspace = true }
+bevy_input_focus = { workspace = true }
+bevy_math = { workspace = true }
+bevy_render = { workspace = true }
+bevy_tasks = { workspace = true }
+bevy_transform = { workspace = true }
+bevy_window = { workspace = true }
+bevy_winit = { workspace = true }
+leet_core = { path = "../leet_core" }
+leet_jobs2 = { path = "../leet_jobs2", features = ["bevy"] }
+tracing = { workspace = true }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+raw-window-handle = "0.6"

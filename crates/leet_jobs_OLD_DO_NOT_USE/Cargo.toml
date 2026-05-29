@@ -1,0 +1,13 @@
+[package]
+name = "leet_jobs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_app    = { workspace = true }
+bevy_ecs    = { workspace = true }
+leet_core    = { path = "../leet_core" }
+leet_log     = { path = "../leet_log" }
+crossbeam-queue = "0.3.12"
+thread-priority = "3.0.0"
+core_affinity = "0.8.3"

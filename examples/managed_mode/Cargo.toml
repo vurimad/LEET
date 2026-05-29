@@ -1,8 +1,0 @@
-[package]
-name = "example_managed"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-leet = { path = "../../crates/leet" }
-
