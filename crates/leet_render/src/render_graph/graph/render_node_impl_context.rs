@@ -16,26 +16,7 @@ use super::super::resources::{
     RenderFlowSpace, RenderQueueKind, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
 };
 use super::{RenderGraphError, RenderGraphResult};
-
-/// Viewport rectangle routed through the active command recording runtime.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RenderViewportRect {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
-impl RenderViewportRect {
-    pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-}
+use bevy_math::URect;
 
 /// Camera access permission granted by the node context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,7 +50,7 @@ pub trait RenderNodeFrameRuntime {
     fn set_viewport(
         &mut self,
         flow_group: RenderFlowGroup,
-        viewport: RenderViewportRect,
+        viewport: URect,
     ) -> RenderGraphResult<()>;
 
     fn record_command_sync(
@@ -437,7 +418,7 @@ impl<'a> RenderNodeImplContext<'a> {
     }
 
     /// Sets the viewport through the active frame command recording runtime.
-    pub fn set_viewport(&mut self, viewport: RenderViewportRect) -> RenderGraphResult<()> {
+    pub fn set_viewport(&mut self, viewport: URect) -> RenderGraphResult<()> {
         self.ensure_setup()?;
         let flow_group = self.flow_group;
         self.frame_runtime_mut()?.set_viewport(flow_group, viewport)

@@ -4,6 +4,7 @@ pub mod graph;
 pub mod resources;
 
 #[cfg(test)]
+#[path = "../tests/render_graph/mod.rs"]
 mod tests;
 
 pub use graph::{
@@ -27,7 +28,6 @@ pub use graph::{
     RenderNodeImplStore, RenderNodeKind, RenderNodeParameters, RenderNodePresent,
     RenderNodeProcessReport, RenderNodeProcessState, RenderNodeResourceDeclaration, RenderNodeRole,
     RenderNodeStartRender, RenderNodeSubtype, RenderNodeSynchronize, RenderNodeView,
-    RenderViewportRect,
 };
 pub use resources::{
     AllocationRequest, AllocationRequestId, AllocationRequestSource, ExternalFrameResourceId,

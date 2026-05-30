@@ -2,9 +2,10 @@
 
 use super::{
     RenderGraphError, RenderGraphResult, RenderNodeDependencyKind, RenderNodeFrameRuntime,
-    RenderNodeGraph, RenderViewportRect,
+    RenderNodeGraph,
 };
 use crate::render_graph::resources::{QueueSyncKind, RenderFlowGroup, RenderQueueKind};
+use bevy_math::URect;
 
 /// Stable command recording slot addressed by render flow group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -61,7 +62,7 @@ struct FrameCommandRecorderSlotData {
     label: Option<String>,
     state: FrameCommandRecorderState,
     active_pass: Option<FrameCommandPassKind>,
-    viewport: Option<RenderViewportRect>,
+    viewport: Option<URect>,
     debug_markers: Vec<String>,
     sync_events: Vec<FrameCommandSyncEvent>,
 }
@@ -155,7 +156,7 @@ impl FrameCommandRecorders {
     pub fn viewport(
         &self,
         flow_group: RenderFlowGroup,
-    ) -> RenderGraphResult<Option<RenderViewportRect>> {
+    ) -> RenderGraphResult<Option<URect>> {
         Ok(self.slot_data(flow_group)?.viewport)
     }
 
@@ -255,7 +256,7 @@ impl FrameCommandRecorders {
     pub fn set_viewport(
         &mut self,
         flow_group: RenderFlowGroup,
-        viewport: RenderViewportRect,
+        viewport: URect,
     ) -> RenderGraphResult<()> {
         let data = self.slot_data_mut(flow_group)?;
         if data.active_pass != Some(FrameCommandPassKind::Render) {
@@ -473,7 +474,7 @@ impl RenderNodeFrameRuntime for FrameCommandRecorders {
     fn set_viewport(
         &mut self,
         flow_group: RenderFlowGroup,
-        viewport: RenderViewportRect,
+        viewport: URect,
     ) -> RenderGraphResult<()> {
         FrameCommandRecorders::set_viewport(self, flow_group, viewport)
     }

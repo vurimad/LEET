@@ -4,7 +4,6 @@ members = [
     "crates/leet_jobs2",
     "crates/leet_log",
     "crates/leet_render",
-    "crates/leet_wgpu_microbench",
 ]
 resolver = "2"
 

@@ -56,7 +56,7 @@ pub use render_node_graph::{
 };
 pub use render_node_impl_context::{
     RenderCameraAccess, RenderNodeFrameRuntime, RenderNodeImplContext, RenderNodeImplContextInit,
-    RenderNodeImplKind, RenderViewportRect,
+    RenderNodeImplKind,
 };
 pub use system_nodes::{
     RenderNodeBeginRenderTargets, RenderNodeCleanupBatchData, RenderNodeDeclareResources,
