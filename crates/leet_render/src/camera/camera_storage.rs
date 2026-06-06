@@ -7,9 +7,7 @@ use bevy_ecs::{
     prelude::{ResMut, Resource},
 };
 
-use crate::{
-    RenderCamera, RenderCameraId, RenderFrameError, RenderFrameResult,
-};
+use crate::{RenderCamera, RenderCameraId, RenderFrameError, RenderFrameResult};
 use bevy_math::URect;
 
 pub const MAX_CAMERA_DEPENDENCIES: usize = 8;
@@ -51,7 +49,6 @@ pub struct RenderCameraRegistration {
     // TODO(Camera submission): this is still target-submission metadata. Keep
     // it here only until frame assembly gets its own camera submission stage.
     pub target_view_index: u32,
-    pub viewport: URect,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -60,15 +57,14 @@ pub struct RenderCameraRegistrationRef<'a> {
     pub camera_entity: Entity,
     pub camera: &'a RenderCamera,
     pub target_view_index: u32,
-    pub viewport: URect,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct PreparedFrameCamera {
     pub camera_id: RenderCameraId,
+    pub camera: RenderCamera,
     pub source_view_index: u32,
     pub render_flow_space: u32,
-    pub viewport: URect,
     pub selected_dependencies: Vec<PreparedCameraDependency>,
     pub reset_temporal_history: bool,
     pub previous_frame: Option<PreparedCameraHistory>,
@@ -203,7 +199,6 @@ impl RenderCameraStorage {
                 camera_entity: entry.camera_entity,
                 camera: &entry.camera,
                 target_view_index: entry.target_view_index,
-                viewport: entry.viewport,
             })
     }
 
@@ -252,12 +247,6 @@ impl RenderCameraStorage {
                 camera_entity: entity,
                 camera: camera.clone(),
                 target_view_index,
-                viewport: URect::new(
-                    camera.viewport_rect.x,
-                    camera.viewport_rect.y,
-                    camera.viewport_rect.x + camera.viewport_rect.z,
-                    camera.viewport_rect.y + camera.viewport_rect.w,
-                ),
             });
         }
 
@@ -302,7 +291,6 @@ impl RenderCameraStorage {
             camera_entity: registration.camera_entity,
             camera: registration.camera,
             target_view_index: registration.target_view_index,
-            viewport: registration.viewport,
             management,
             render_policy,
             render_flow_space,
@@ -469,15 +457,15 @@ impl RenderCameraStorage {
             let reset_temporal_history = stable_frame || previous_frame.is_none();
             let prepared_history = PreparedCameraHistory {
                 frame_index: ctx.frame_index,
-                viewport: entry.viewport,
+                viewport: entry.camera.viewport,
             };
             entry.last_prepared = Some(prepared_history);
 
             prepared.push(PreparedFrameCamera {
                 camera_id,
+                camera: entry.camera.clone(),
                 source_view_index: entry.target_view_index,
                 render_flow_space: entry.render_flow_space,
-                viewport: entry.viewport,
                 selected_dependencies: entry
                     .dependencies
                     .iter()
@@ -671,7 +659,6 @@ struct CameraRegistryEntry {
     // TODO(Camera submission): remove this from registry storage once the
     // frame dispatcher owns submitted-camera ordering outright.
     target_view_index: u32,
-    viewport: URect,
     management: CameraManagement,
     render_policy: CameraRenderPolicy,
     render_flow_space: u32,

@@ -76,7 +76,7 @@ fn hash(value: u64) -> RenderGraphShapeHash {
 fn build_graph(
     name: &'static str,
     log: Arc<Mutex<Vec<&'static str>>>,
-) -> super::super::BuiltRenderNodeGraph {
+) -> super::super::FinalRenderNodeGraph {
     let mut factory = RenderNodeGraphFactory::new();
     let group = factory.create_group().unwrap();
     factory

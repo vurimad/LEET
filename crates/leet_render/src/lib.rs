@@ -2,6 +2,7 @@ mod app;
 mod camera;
 mod extract;
 mod render_graph;
+mod render_target;
 mod rendering;
 mod rhi_wgpu;
 mod scene;
@@ -15,8 +16,9 @@ pub use app::{
 pub use camera::{
     sync_render_camera_storage, CameraDependencyFlags, CameraManagement, CameraPlugin,
     CameraPrepareContext, CameraRenderPolicy, PreparedCameraDependency, PreparedCameraHistory,
-    PreparedFrameCamera, RenderCamera, RenderCameraRegistration, RenderCameraRegistrationRef,
-    RenderCameraStorage, MAX_CAMERA_DEPENDENCIES, MAX_CAMERA_DEPENDENCY_DEPTH,
+    PreparedFrameCamera, RenderCamera, RenderCameraFeatures, RenderCameraRegistration,
+    RenderCameraRegistrationRef, RenderCameraStorage, MAX_CAMERA_DEPENDENCIES,
+    MAX_CAMERA_DEPENDENCY_DEPTH,
 };
 pub use extract::{Extract, ExtractionPlugin};
 pub use leet_core::{Leeror, LeetResult};
@@ -27,8 +29,8 @@ pub use leet_jobs2::{
 pub use render_graph::{
     execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order, process_node,
     process_node_with_runtime, AddGraphGroupImport, AddGraphOptions, AllocationRequest,
-    AllocationRequestId, AllocationRequestSource, BuiltRenderNodeGraph, CommandListGroupNode,
-    CommandListGroupStore, ExternalFrameResourceId, FrameBufferDesc, FrameBufferResource,
+    AllocationRequestId, AllocationRequestSource, CommandListGroupNode, CommandListGroupStore,
+    ExternalFrameResourceId, FinalRenderNodeGraph, FrameBufferDesc, FrameBufferResource,
     FrameCommandPassKind, FrameCommandRecorderSlot, FrameCommandRecorderState,
     FrameCommandRecorders, FrameCommandSubmission, FrameCommandSyncEvent, FrameLifetimeSolution,
     FrameResource, FrameResourceAllocation, FrameResourceAllocationClass,
@@ -58,16 +60,16 @@ pub use render_graph::{
     ResourceRequest, ResourceRequestId, ResourceUsage, TagLifetime, TagLifetimeEvent,
     TagLifetimeEventKind,
 };
+pub use render_target::{FrameOutput, FrameTargetResolver, RenderViewport};
 pub use rendering::{
     dispatch_general_rendering, render_resources_from_wgpu, AtomicBufferUploader, BufferUploadBase,
-    BufferUploadPlugin, BufferUploader, CameraRenderSetupKey, FrameCamera, FrameCaptureIntent,
-    FrameDebugIntent, FrameDispatcher, FrameInput, FrameInputBuilder, FramePurpose, FrameRenderer,
-    FrameRendererHandle, FrameRenderingMode, FrameTarget, FrameTargetKey, FrameTargetResolver,
-    FrameTiming, PresentationIntent, RenderCameraId, RenderCommand, RenderCommandHandler,
+    BufferUploadPlugin, BufferUploader, FrameCaptureIntent, FrameDebugGraphView, FrameDebugIntent,
+    FrameDispatcher, FrameGpuScene, FrameGpuScenePhaseIndexBuffer, FrameInput, FrameInputBuilder,
+    FramePurpose, FrameRenderer, FrameRendererHandle, FrameRenderingMode, FrameTiming,
+    PresentationIntent, RenderCameraId, RenderCommand, RenderCommandHandler,
     RenderCommandQueueKind, RenderCommandSafety, RenderFrameContext, RenderFrameError,
-    RenderFrameResult, RenderJobBuilder, RenderSceneId, RenderViewport,
-    SparseBufferUpdateJobs, SparseBufferUpdatePipeline, SparseUploadMetadata,
-    SparseUploadStagingBuffers,
+    RenderFrameResult, RenderJobBuilder, SparseBufferUpdateJobs, SparseBufferUpdatePipeline,
+    SparseUploadMetadata, SparseUploadStagingBuffers,
 };
 pub(crate) use rhi_wgpu::RenderResources;
 pub use rhi_wgpu::{

@@ -1,4 +1,4 @@
-use crate::{texture::ManualTextureViews, Extract};
+use crate::{Extract, ManualTextureViews};
 use bevy_ecs::prelude::{Res, ResMut};
 use std::ops::Deref;
 

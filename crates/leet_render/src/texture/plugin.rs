@@ -1,5 +1,4 @@
-use super::manual_texture_view::ManualTextureViews;
-use crate::RenderApp;
+use crate::{ManualTextureViews, RenderApp};
 use bevy_app::{App, Plugin};
 
 /// Registers render-world texture tables and domain boundaries.

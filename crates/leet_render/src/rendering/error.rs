@@ -2,6 +2,8 @@
 
 use std::{error::Error, fmt};
 
+use crate::RenderGraphError;
+
 pub type RenderFrameResult<T> = Result<T, RenderFrameError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +12,7 @@ pub enum RenderFrameError {
     LockPoisoned { resource: &'static str },
     MissingFrameTarget { reason: &'static str },
     NotImplemented { operation: &'static str },
+    RenderGraph(RenderGraphError),
 }
 
 impl fmt::Display for RenderFrameError {
@@ -30,8 +33,17 @@ impl fmt::Display for RenderFrameError {
                     "frame renderer operation is not implemented yet: {operation}"
                 )
             }
+            Self::RenderGraph(error) => {
+                write!(f, "render graph error during frame rendering: {error}")
+            }
         }
     }
 }
 
 impl Error for RenderFrameError {}
+
+impl From<RenderGraphError> for RenderFrameError {
+    fn from(error: RenderGraphError) -> Self {
+        Self::RenderGraph(error)
+    }
+}

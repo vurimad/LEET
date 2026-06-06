@@ -9,8 +9,8 @@ mod tests;
 
 pub use graph::{
     execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order, process_node,
-    process_node_with_runtime, AddGraphGroupImport, AddGraphOptions, BuiltRenderNodeGraph,
-    CommandListGroupNode, CommandListGroupStore, FrameCommandPassKind, FrameCommandRecorderSlot,
+    process_node_with_runtime, AddGraphGroupImport, AddGraphOptions, CommandListGroupNode,
+    CommandListGroupStore, FinalRenderNodeGraph, FrameCommandPassKind, FrameCommandRecorderSlot,
     FrameCommandRecorderState, FrameCommandRecorders, FrameCommandSubmission,
     FrameCommandSyncEvent, GraphImportMap, NodeGroupId, NoopRenderGraphCoreRunnerHooks,
     RenderCameraAccess, RenderDependencyData, RenderDependencyId, RenderGlobalBindingMask,

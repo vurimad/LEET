@@ -153,10 +153,7 @@ impl FrameCommandRecorders {
         Ok(self.slot_data(flow_group)?.active_pass)
     }
 
-    pub fn viewport(
-        &self,
-        flow_group: RenderFlowGroup,
-    ) -> RenderGraphResult<Option<URect>> {
+    pub fn viewport(&self, flow_group: RenderFlowGroup) -> RenderGraphResult<Option<URect>> {
         Ok(self.slot_data(flow_group)?.viewport)
     }
 

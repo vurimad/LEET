@@ -9,7 +9,7 @@ use leet_jobs2::Builder as RenderJobBuilder;
 
 use super::{
     execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order,
-    BuiltRenderNodeGraph, FrameCommandRecorders, FrameCommandSubmission, RenderGraphError,
+    FinalRenderNodeGraph, FrameCommandRecorders, FrameCommandSubmission, RenderGraphError,
     RenderGraphResult, RenderNodeProcessReport, RenderNodeProcessState,
 };
 use crate::render_graph::resources::{FrameResourceAllocator, ResourceAllocatorPhase};
@@ -33,12 +33,12 @@ pub enum RenderGraphCoreRunnerState {
 /// keeping the runner independent from the final frame renderer.
 pub trait RenderGraphCoreRunnerHooks {
     /// Called after the graph has been verified built and before recorder prep.
-    fn after_graph_build_merge(&mut self, _graph: &BuiltRenderNodeGraph) -> RenderGraphResult<()> {
+    fn after_graph_build_merge(&mut self, _graph: &FinalRenderNodeGraph) -> RenderGraphResult<()> {
         Ok(())
     }
 
     /// Called after command recorder storage is prepared and before preconsume.
-    fn prepare_frame_data(&mut self, _graph: &BuiltRenderNodeGraph) -> RenderGraphResult<()> {
+    fn prepare_frame_data(&mut self, _graph: &FinalRenderNodeGraph) -> RenderGraphResult<()> {
         Ok(())
     }
 }
@@ -134,7 +134,7 @@ impl RenderGraphCoreRunner {
     /// Executes a built graph with no-op lifecycle hooks.
     pub fn execute_built_graph(
         &mut self,
-        graph: &BuiltRenderNodeGraph,
+        graph: &FinalRenderNodeGraph,
         jobs: &mut RenderJobBuilder,
     ) -> RenderGraphResult<RenderGraphCoreRunReport> {
         self.execute_built_graph_with_hooks(graph, jobs, &mut NoopRenderGraphCoreRunnerHooks)
@@ -143,7 +143,7 @@ impl RenderGraphCoreRunner {
     /// Executes a built graph through the graph-core lifecycle.
     pub fn execute_built_graph_with_hooks(
         &mut self,
-        graph: &BuiltRenderNodeGraph,
+        graph: &FinalRenderNodeGraph,
         jobs: &mut RenderJobBuilder,
         hooks: &mut dyn RenderGraphCoreRunnerHooks,
     ) -> RenderGraphResult<RenderGraphCoreRunReport> {
@@ -155,7 +155,7 @@ impl RenderGraphCoreRunner {
 
     fn execute_built_graph_inner(
         &mut self,
-        graph: &BuiltRenderNodeGraph,
+        graph: &FinalRenderNodeGraph,
         jobs: &mut RenderJobBuilder,
         hooks: &mut dyn RenderGraphCoreRunnerHooks,
     ) -> RenderGraphResult<RenderGraphCoreRunReport> {

@@ -4,8 +4,8 @@ use bevy_math::UVec2;
 use leet_jobs2::JobSystemConfig;
 
 use crate::{
-    FrameCaptureIntent, FrameDebugIntent, FramePurpose, FrameRenderingMode, FrameTarget,
-    FrameTargetKey, FrameTiming, PresentationIntent, RenderSceneId,
+    FrameCaptureIntent, FrameDebugIntent, FrameGpuScene, FrameOutput, FramePurpose,
+    FrameRenderingMode, FrameTiming, PresentationIntent, RenderViewport,
 };
 
 use super::*;
@@ -20,14 +20,16 @@ fn job_system() -> LeetJobSystem {
 }
 
 fn blank_frame(width: u32, height: u32) -> FrameInput {
+    let viewport = RenderViewport::targetless(
+        UVec2::new(width, height),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
+
     FrameInput {
-        target: FrameTarget {
-            key: FrameTargetKey::External(1),
-            extent: UVec2::new(width, height),
-            format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-        },
+        viewport,
+        output: FrameOutput::Targetless,
         cameras: Vec::new(),
-        scene: RenderSceneId(1),
+        scene: FrameGpuScene::empty(),
         timing: FrameTiming {
             frame_index: 1,
             ..FrameTiming::default()

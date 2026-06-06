@@ -1,16 +1,17 @@
 //! Resolves declared frame targets into concrete renderable viewports.
 
-use crate::RenderWindowRegistry;
+use bevy_camera::NormalizedRenderTarget;
+use bevy_ecs::entity::ContainsEntity;
+use bevy_math::UVec2;
 
-use super::{
-    FrameTarget, FrameTargetKey, PresentationIntent, RenderFrameError, RenderFrameResult,
-    RenderViewport,
-};
+use crate::{RenderFrameError, RenderFrameResult, RenderWindowRegistry};
+
+use super::{FrameOutput, RenderViewport};
 
 /// Render-world resolver for frame output targets.
 ///
-/// `FrameTarget` is the frame-builder request. This resolver is the boundary
-/// that proves the requested output has a concrete resource for this frame.
+/// This resolver is the boundary that proves the requested output has a
+/// concrete resource for this frame.
 pub struct FrameTargetResolver<'w> {
     windows: &'w mut RenderWindowRegistry,
 }
@@ -22,21 +23,24 @@ impl<'w> FrameTargetResolver<'w> {
 
     pub fn resolve(
         &mut self,
-        target: FrameTarget,
-        presentation: PresentationIntent,
-    ) -> RenderFrameResult<RenderViewport> {
-        target.validate()?;
+        declared: NormalizedRenderTarget,
+        extent: UVec2,
+        format: Option<wgpu::TextureFormat>,
+    ) -> RenderFrameResult<(RenderViewport, FrameOutput)> {
+        validate_target_extent(extent)?;
 
-        match target.key {
-            FrameTargetKey::Window(window) => self.resolve_window(window, target, presentation),
-            FrameTargetKey::Image(_) => Err(RenderFrameError::NotImplemented {
+        match declared {
+            NormalizedRenderTarget::Window(window) => {
+                self.resolve_window(window.entity(), extent, format)
+            }
+            NormalizedRenderTarget::Image(_) => Err(RenderFrameError::NotImplemented {
                 operation: "resolve image frame target",
             }),
-            FrameTargetKey::ManualTextureView(_) => Err(RenderFrameError::NotImplemented {
+            NormalizedRenderTarget::TextureView(_) => Err(RenderFrameError::NotImplemented {
                 operation: "resolve manual texture-view frame target",
             }),
-            FrameTargetKey::External(_) => Err(RenderFrameError::NotImplemented {
-                operation: "resolve external frame target",
+            NormalizedRenderTarget::None { .. } => Err(RenderFrameError::NotImplemented {
+                operation: "resolve targetless offscreen frame target",
             }),
         }
     }
@@ -44,9 +48,9 @@ impl<'w> FrameTargetResolver<'w> {
     fn resolve_window(
         &mut self,
         window: bevy_ecs::entity::Entity,
-        target: FrameTarget,
-        presentation: PresentationIntent,
-    ) -> RenderFrameResult<RenderViewport> {
+        extent: UVec2,
+        requested_format: Option<wgpu::TextureFormat>,
+    ) -> RenderFrameResult<(RenderViewport, FrameOutput)> {
         let window = self
             .windows
             .get_mut(&window)
@@ -57,7 +61,7 @@ impl<'w> FrameTargetResolver<'w> {
         let format = window
             .swap_chain_texture_view_format
             .or(window.swap_chain_texture_format)
-            .or(target.format)
+            .or(requested_format)
             .ok_or(RenderFrameError::MissingFrameTarget {
                 reason: "frame target window has no swapchain texture format",
             })?;
@@ -77,6 +81,19 @@ impl<'w> FrameTargetResolver<'w> {
                     reason: "frame target window has no acquired swapchain texture view",
                 })?;
 
-        RenderViewport::window(target, format, surface_texture, view, presentation)
+        Ok((
+            RenderViewport::window(extent, format, view),
+            FrameOutput::WindowSurface(surface_texture),
+        ))
     }
+}
+
+fn validate_target_extent(extent: UVec2) -> RenderFrameResult<()> {
+    if extent.x == 0 || extent.y == 0 {
+        return Err(RenderFrameError::MissingFrameTarget {
+            reason: "frame target extent is zero",
+        });
+    }
+
+    Ok(())
 }

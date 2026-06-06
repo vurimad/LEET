@@ -6,8 +6,8 @@
 //! `RenderNodeImplContext`.
 
 use super::super::{
-    execute_graph_sequential_gpu_order, AddGraphOptions, BuiltRenderNodeGraph,
-    ExternalFrameResourceId, FrameBufferDesc, FrameCommandSubmission, FrameResourceAllocationId,
+    execute_graph_sequential_gpu_order, AddGraphOptions, ExternalFrameResourceId,
+    FinalRenderNodeGraph, FrameBufferDesc, FrameCommandSubmission, FrameResourceAllocationId,
     FrameResourceAllocator, FrameResourceDesc, FrameResourceOwnership, FrameResourceResult,
     FrameTextureDesc, QueueSyncKind, RenderFlowGroup, RenderFlowSpace, RenderGraphCache,
     RenderGraphCoreRunner, RenderGraphResult, RenderGraphShapeHash, RenderGraphShapeHashBuilder,
@@ -525,7 +525,7 @@ fn build_command_group_node(
     Ok(node)
 }
 
-fn build_core_tiny_graph() -> RenderGraphResult<BuiltRenderNodeGraph> {
+fn build_core_tiny_graph() -> RenderGraphResult<FinalRenderNodeGraph> {
     let mut factory = RenderNodeGraphFactory::new();
     let group = factory.create_group()?;
     let start = factory.create_system_node(

@@ -6,8 +6,8 @@ use super::super::{
     ResourceUsage,
 };
 use crate::{RenderAppPlugin, RenderDevice};
-use bevy_math::URect;
 use bevy_app::App;
+use bevy_math::URect;
 use wgpu::{
     BufferDescriptor, BufferUsages, Extent3d, TextureDescriptor, TextureDimension, TextureFormat,
     TextureUsages,

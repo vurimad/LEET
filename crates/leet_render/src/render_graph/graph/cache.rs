@@ -1,8 +1,8 @@
 //! Built render graph cache.
 
 use super::{
-    BuiltRenderNodeGraph, CommandListGroupStore, RenderGraphError, RenderGraphResult,
-    RenderNodeGraph, RenderNodeImplStore,
+    AddGraphOptions, CommandListGroupStore, FinalRenderNodeGraph, RenderGraphError,
+    RenderGraphResult, RenderNodeGraph, RenderNodeImplStore,
 };
 
 const DEFAULT_MAX_CACHE_ENTRIES: usize = 4;
@@ -100,7 +100,7 @@ impl RenderGraphCameraBuildData {
 
     pub fn from_built_graph(
         setup_hash: RenderGraphShapeHash,
-        built_graph: BuiltRenderNodeGraph,
+        built_graph: FinalRenderNodeGraph,
     ) -> Self {
         let (temporary_graph, node_impls, command_groups) = built_graph.into_parts();
         Self {
@@ -117,6 +117,10 @@ impl RenderGraphCameraBuildData {
 
     pub fn temporary_graph(&self) -> &RenderNodeGraph {
         &self.temporary_graph
+    }
+
+    pub fn temporary_graph_mut(&mut self) -> &mut RenderNodeGraph {
+        &mut self.temporary_graph
     }
 
     pub fn node_impls(&self) -> &RenderNodeImplStore {
@@ -143,7 +147,7 @@ impl Default for RenderGraphCameraBuildData {
 pub struct RenderGraphCacheEntry {
     shape_hash: RenderGraphShapeHash,
     last_used_frame: u64,
-    final_graph: Option<BuiltRenderNodeGraph>,
+    final_graph: Option<FinalRenderNodeGraph>,
     camera_build_data: Vec<RenderGraphCameraBuildData>,
     rebuild_generation: u64,
 }
@@ -177,19 +181,64 @@ impl RenderGraphCacheEntry {
         self.rebuild_generation
     }
 
-    pub fn final_graph(&self) -> Option<&BuiltRenderNodeGraph> {
+    pub fn final_graph(&self) -> Option<&FinalRenderNodeGraph> {
         self.final_graph.as_ref()
     }
 
-    pub fn final_graph_mut(&mut self) -> Option<&mut BuiltRenderNodeGraph> {
+    pub fn final_graph_mut(&mut self) -> Option<&mut FinalRenderNodeGraph> {
         self.final_graph.as_mut()
     }
 
-    pub fn set_final_graph(&mut self, graph: BuiltRenderNodeGraph) {
+    pub fn set_final_graph(&mut self, graph: FinalRenderNodeGraph) {
         self.final_graph = Some(graph);
     }
 
-    pub fn take_final_graph(&mut self) -> Option<BuiltRenderNodeGraph> {
+    pub fn ensure_final_graph(&mut self) -> &mut FinalRenderNodeGraph {
+        self.final_graph.get_or_insert_with(|| {
+            FinalRenderNodeGraph::from_parts(
+                RenderNodeGraph::new(),
+                RenderNodeImplStore::new(),
+                CommandListGroupStore::new(),
+            )
+        })
+    }
+
+    pub fn import_camera_setup_graph_to_final(
+        &mut self,
+        camera_index: usize,
+        force_camera_index: u32,
+    ) -> RenderGraphResult<()> {
+        let Some(camera_data) = self.camera_build_data.get(camera_index) else {
+            return Err(RenderGraphError::InvalidId {
+                kind: "camera graph build data",
+                raw: camera_index as u32,
+            });
+        };
+
+        let source_graph = camera_data.temporary_graph();
+        let source_command_groups = camera_data.command_groups();
+        let final_graph = self.final_graph.get_or_insert_with(|| {
+            FinalRenderNodeGraph::from_parts(
+                RenderNodeGraph::new(),
+                RenderNodeImplStore::new(),
+                CommandListGroupStore::new(),
+            )
+        });
+        let import_map = final_graph.graph_mut().add_graph(
+            source_graph,
+            AddGraphOptions {
+                force_camera_index: Some(force_camera_index),
+                merge_special_nodes: true,
+                ..AddGraphOptions::default()
+            },
+        )?;
+
+        final_graph
+            .command_group_store_mut()
+            .import_from(source_command_groups, &import_map)
+    }
+
+    pub fn take_final_graph(&mut self) -> Option<FinalRenderNodeGraph> {
         self.final_graph.take()
     }
 

@@ -1,4 +1,7 @@
-use crate::{Extract, ManualTextureViews, RenderCamera, RenderCameraStorage, RenderWindowRegistry};
+use crate::{
+    Extract, ManualTextureViews, RenderCamera, RenderCameraFeatures, RenderCameraStorage,
+    RenderWindowRegistry,
+};
 use bevy_asset::Assets;
 use bevy_camera::{Camera, CompositingSpace, Exposure, Hdr, NormalizedRenderTarget, RenderTarget};
 use bevy_ecs::{
@@ -7,7 +10,7 @@ use bevy_ecs::{
     query::Has,
 };
 use bevy_image::Image;
-use bevy_math::{URect, UVec4};
+use bevy_math::URect;
 use bevy_transform::components::GlobalTransform;
 use bevy_window::PrimaryWindow;
 use wgpu::TextureFormat;
@@ -84,16 +87,14 @@ pub(crate) fn extract_cameras(
             main_entity,
             RenderCamera {
                 target: target.clone(),
-                physical_viewport_size: Some(viewport_size),
                 physical_target_size: Some(target_size),
-                viewport: camera.viewport.clone(),
                 clip_from_view: camera.clip_from_view(),
                 world_from_view: *transform,
-                viewport_rect: UVec4::new(
+                viewport: URect::new(
                     viewport_origin.x,
                     viewport_origin.y,
-                    viewport_size.x,
-                    viewport_size.y,
+                    viewport_origin.x + viewport_size.x,
+                    viewport_origin.y + viewport_size.y,
                 ),
                 invert_culling: camera.invert_culling,
                 main_pass_texture_format: target_format,
@@ -105,6 +106,7 @@ pub(crate) fn extract_cameras(
                     .map(Exposure::exposure)
                     .unwrap_or_else(|| Exposure::default().exposure()),
                 hdr,
+                features: RenderCameraFeatures::empty(),
                 compositing_space: compositing_space.copied(),
             },
         );

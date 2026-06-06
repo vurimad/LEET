@@ -1,10 +1,9 @@
 use bevy_camera::{CameraOutputMode, ClearColorConfig, MsaaWriteback};
 use bevy_ecs::world::World;
-use bevy_math::{Mat4, UVec2, UVec4};
+use bevy_math::{Mat4, URect, UVec2};
 use bevy_transform::components::GlobalTransform;
 
-use crate::{RenderCamera, RenderCameraRegistration};
-use bevy_math::URect;
+use crate::{RenderCamera, RenderCameraFeatures, RenderCameraRegistration};
 
 use super::*;
 
@@ -16,15 +15,12 @@ fn camera_registration(raw_id: u64, order: isize, view_index: u32) -> RenderCame
         camera_entity: entity,
         camera_id: RenderCameraId(raw_id),
         target_view_index: view_index,
-        viewport: URect::new(0, 0, 128, 72),
         camera: RenderCamera {
             target: None,
-            physical_viewport_size: Some(UVec2::new(128, 72)),
             physical_target_size: Some(UVec2::new(128, 72)),
-            viewport: None,
             clip_from_view: Mat4::IDENTITY,
             world_from_view: GlobalTransform::IDENTITY,
-            viewport_rect: UVec4::new(0, 0, 128, 72),
+            viewport: URect::new(0, 0, 128, 72),
             invert_culling: false,
             main_pass_texture_format: wgpu::TextureFormat::Rgba8UnormSrgb,
             order,
@@ -33,19 +29,14 @@ fn camera_registration(raw_id: u64, order: isize, view_index: u32) -> RenderCame
             clear_color: ClearColorConfig::Default,
             exposure: 1.0,
             hdr: false,
+            features: RenderCameraFeatures::empty(),
             compositing_space: None,
         },
     }
 }
 
 fn prepare_context(frame_index: u64) -> CameraPrepareContext {
-    CameraPrepareContext::new(
-        true,
-        true,
-        false,
-        frame_index,
-        URect::new(0, 0, 128, 72),
-    )
+    CameraPrepareContext::new(true, true, false, frame_index, URect::new(0, 0, 128, 72))
 }
 
 #[test]

@@ -9,17 +9,33 @@ use super::{
 };
 use crate::render_graph::resources::RenderQueueKind;
 
-/// Finished graph package produced by `RenderNodeGraphFactory::finish`.
-pub struct BuiltRenderNodeGraph {
+/// Final graph package produced by `RenderNodeGraphFactory::finish`.
+pub struct FinalRenderNodeGraph {
     graph: RenderNodeGraph,
     impl_store: RenderNodeImplStore,
     command_groups: CommandListGroupStore,
 }
 
-impl BuiltRenderNodeGraph {
+impl FinalRenderNodeGraph {
+    pub(crate) fn from_parts(
+        graph: RenderNodeGraph,
+        impl_store: RenderNodeImplStore,
+        command_groups: CommandListGroupStore,
+    ) -> Self {
+        Self {
+            graph,
+            impl_store,
+            command_groups,
+        }
+    }
+
     /// Returns the built graph topology.
     pub fn graph(&self) -> &RenderNodeGraph {
         &self.graph
+    }
+
+    pub(crate) fn graph_mut(&mut self) -> &mut RenderNodeGraph {
+        &mut self.graph
     }
 
     /// Returns the implementation store referenced by the graph.
@@ -35,6 +51,10 @@ impl BuiltRenderNodeGraph {
     /// Returns the command-list group store referenced by the graph.
     pub fn command_group_store(&self) -> &CommandListGroupStore {
         &self.command_groups
+    }
+
+    pub(crate) fn command_group_store_mut(&mut self) -> &mut CommandListGroupStore {
+        &mut self.command_groups
     }
 
     /// Returns command-list group data by graph-visible wrapper node id.
@@ -437,7 +457,7 @@ impl RenderNodeGraphFactory {
     }
 
     /// Builds flow groups and returns the finalized graph package.
-    pub fn finish(mut self) -> RenderGraphResult<BuiltRenderNodeGraph> {
+    pub fn finish(mut self) -> RenderGraphResult<FinalRenderNodeGraph> {
         if self.open_command_group.is_some() {
             return Err(RenderGraphError::InvalidCommandListGroupUsage {
                 operation: "finish",
@@ -445,7 +465,7 @@ impl RenderNodeGraphFactory {
             });
         }
         self.graph.build_flow_groups()?;
-        Ok(BuiltRenderNodeGraph {
+        Ok(FinalRenderNodeGraph {
             graph: self.graph,
             impl_store: self.impl_store,
             command_groups: self.command_groups,

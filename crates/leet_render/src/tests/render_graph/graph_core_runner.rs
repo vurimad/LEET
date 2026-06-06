@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use leet_jobs2::{Builder as RenderJobBuilder, JobSystemConfig, LeetJobSystem, Priority};
 
 use super::super::{
-    BuiltRenderNodeGraph, FrameCommandRecorderState, RenderFlowGroup, RenderGraphCoreRunner,
+    FinalRenderNodeGraph, FrameCommandRecorderState, RenderFlowGroup, RenderGraphCoreRunner,
     RenderGraphCoreRunnerHooks, RenderGraphCoreRunnerState, RenderGraphError, RenderGraphResult,
     RenderNodeCommandListUsage, RenderNodeDependencyKind, RenderNodeGraphFactory, RenderNodeImpl,
     RenderNodeImplContext, RenderNodeKind, RenderNodeSubtype, ResourceAllocatorPhase,
@@ -56,13 +56,13 @@ impl LoggingHooks {
 }
 
 impl RenderGraphCoreRunnerHooks for LoggingHooks {
-    fn after_graph_build_merge(&mut self, graph: &BuiltRenderNodeGraph) -> RenderGraphResult<()> {
+    fn after_graph_build_merge(&mut self, graph: &FinalRenderNodeGraph) -> RenderGraphResult<()> {
         assert!(graph.graph().is_built());
         self.log.lock().unwrap().push("hook:graph".to_owned());
         Ok(())
     }
 
-    fn prepare_frame_data(&mut self, _graph: &BuiltRenderNodeGraph) -> RenderGraphResult<()> {
+    fn prepare_frame_data(&mut self, _graph: &FinalRenderNodeGraph) -> RenderGraphResult<()> {
         self.log.lock().unwrap().push("hook:frame".to_owned());
         Ok(())
     }
@@ -93,7 +93,7 @@ impl Drop for JobHarness {
     }
 }
 
-fn build_two_node_graph(log: Arc<Mutex<Vec<String>>>) -> (BuiltRenderNodeGraph, RenderFlowGroup) {
+fn build_two_node_graph(log: Arc<Mutex<Vec<String>>>) -> (FinalRenderNodeGraph, RenderFlowGroup) {
     let mut factory = RenderNodeGraphFactory::new();
     let group = factory.create_group().unwrap();
     let first = factory

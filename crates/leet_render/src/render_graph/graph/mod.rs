@@ -40,7 +40,7 @@ pub use execution::{
     process_node_with_runtime, RenderGraphDependencyCounters, RenderGraphDependencyExecutionReport,
     RenderGraphJobNode, RenderGraphJobPayload, RenderNodeProcessReport, RenderNodeProcessState,
 };
-pub use factory::{BuiltRenderNodeGraph, RenderNodeGraphFactory};
+pub use factory::{FinalRenderNodeGraph, RenderNodeGraphFactory};
 pub use ids::{NodeGroupId, RenderDependencyId, RenderNodeId, RenderNodeImplId};
 pub use metadata::{
     RenderNodeCommandListUsage, RenderNodeDebugName, RenderNodeDependencyKind, RenderNodeKind,
