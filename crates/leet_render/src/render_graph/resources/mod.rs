@@ -14,7 +14,7 @@ pub mod request;
 pub mod tag;
 pub mod usage;
 
-pub use allocator::FrameResourceAllocator;
+pub use allocator::RenderResourceAllocator;
 pub use desc::{FrameBufferDesc, FrameResourceDesc, FrameResourceShape, FrameTextureDesc};
 pub use diagnostics::FrameResourceDiagnostics;
 pub use error::{FrameResourceError, FrameResourceResult};
@@ -36,5 +36,6 @@ pub use request::{
 pub use tag::{
     AllocationRequestId, FrameResourceAllocationId, RenderFlowAutoId, RenderFlowGroup,
     RenderFlowName, RenderFlowNameTag, RenderFlowSpace, RequestTime, ResourceRequestId,
+    MAX_RENDER_FLOW_GROUPS,
 };
 pub use usage::ResourceUsage;

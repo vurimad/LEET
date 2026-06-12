@@ -2,10 +2,13 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use leet_jobs2::Builder as RenderJobBuilder;
+
 use super::{
     storage::GraphStorage, RenderDependencyData, RenderDependencyId, RenderGraphError,
     RenderGraphResult, RenderNodeData, RenderNodeDependencyKind, RenderNodeExecutionMetadata,
-    RenderNodeId, RenderNodeKind, RenderNodeParameters, RenderNodeSubtype, RenderNodeView,
+    RenderNodeFrameContextInit, RenderNodeId, RenderNodeKind, RenderNodeParameters,
+    RenderNodeSubtype, RenderNodeView,
 };
 use crate::render_graph::resources::RenderFlowGroup;
 
@@ -198,6 +201,14 @@ impl RenderNodeGraph {
         self.freeze_topology();
         self.flow_groups_built = true;
 
+        Ok(())
+    }
+
+    pub fn execute_parallel(
+        &self,
+        _frame_context: RenderNodeFrameContextInit<'_>,
+        _builder: &mut RenderJobBuilder,
+    ) -> RenderGraphResult<()> {
         Ok(())
     }
 

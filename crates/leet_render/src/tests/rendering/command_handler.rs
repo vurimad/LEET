@@ -5,7 +5,8 @@ use leet_jobs2::JobSystemConfig;
 
 use crate::{
     FrameCaptureIntent, FrameDebugIntent, FrameGpuScene, FrameOutput, FramePurpose,
-    FrameRenderingMode, FrameTiming, PresentationIntent, RenderViewport,
+    FrameRenderingMode, FrameTiming, PreparedFrameViews, PresentationIntent, RenderSceneId,
+    RenderViewport,
 };
 
 use super::*;
@@ -28,7 +29,8 @@ fn blank_frame(width: u32, height: u32) -> FrameInput {
     FrameInput {
         viewport,
         output: FrameOutput::Targetless,
-        cameras: Vec::new(),
+        scene_id: RenderSceneId::default(),
+        cameras: PreparedFrameViews::default(),
         scene: FrameGpuScene::empty(),
         timing: FrameTiming {
             frame_index: 1,

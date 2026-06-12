@@ -1,9 +1,9 @@
 mod graph_cache;
 mod graph_command_groups;
 mod graph_command_recorders;
-mod graph_core_runner;
 mod graph_error;
 mod graph_execution;
+mod graph_executor;
 mod graph_factory;
 mod graph_factory_linking;
 mod graph_flow_groups;

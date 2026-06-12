@@ -1,4 +1,4 @@
-//! RED-style render command handler boundary.
+//! Render command handler boundary.
 
 use std::{collections::VecDeque, sync::Mutex};
 

@@ -1,10 +1,10 @@
 use super::super::resources::{
     ExternalFrameResourceId, FrameBufferDesc, FrameLifetimeSolution, FrameResourceAllocationClass,
-    FrameResourceAllocationId, FrameResourceAllocator, FrameResourceDesc, FrameResourceOwnership,
-    FrameResourcePool, FrameResourcePoolCandidate, FrameResourcePoolPlan,
-    FrameResourceReuseRejectionReason, FrameResourceShape, FrameTextureDesc, ImportedFrameResource,
-    RenderFlowGroup, RenderFlowName, RenderFlowNameTag, RenderFlowSpace, RequestGroup,
-    RequestRange, RequestTime, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
+    FrameResourceAllocationId, FrameResourceDesc, FrameResourceOwnership, FrameResourcePool,
+    FrameResourcePoolCandidate, FrameResourcePoolPlan, FrameResourceReuseRejectionReason,
+    FrameResourceShape, FrameTextureDesc, ImportedFrameResource, RenderFlowGroup, RenderFlowName,
+    RenderFlowNameTag, RenderFlowSpace, RenderResourceAllocator, RequestGroup, RequestRange,
+    RequestTime, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
 };
 use crate::{RenderAppPlugin, RenderDevice};
 use bevy_app::App;
@@ -376,7 +376,7 @@ fn largest_first_assignment_order_is_deterministic() {
 
 #[test]
 fn allocator_resolve_stores_pool_plan() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -510,6 +510,27 @@ fn pool_cleanup_ages_and_evicts_owned_allocations() {
     );
     pool.cleanup_after_frame();
     assert!(pool.allocation(FrameResourceAllocationId::new(4)).is_none());
+}
+
+#[test]
+fn pool_cleanup_can_skip_owned_cache_eviction() {
+    let render_device = render_device();
+    let mut pool = FrameResourcePool::with_max_unused_age(1);
+
+    pool.create_owned_buffer(
+        FrameResourceAllocationId::new(4),
+        buffer_desc(1024),
+        &render_device,
+    )
+    .unwrap();
+
+    pool.cleanup_after_frame();
+    pool.cleanup_after_frame_with_eviction(false);
+    pool.cleanup_after_frame_with_eviction(false);
+
+    let allocation = pool.allocation(FrameResourceAllocationId::new(4)).unwrap();
+    assert_eq!(allocation.age(), 0);
+    assert!(allocation.cacheable());
 }
 
 #[test]

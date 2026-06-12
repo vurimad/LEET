@@ -8,10 +8,11 @@
 mod cache;
 mod command_group;
 mod command_recorder;
-mod core_runner;
 mod error;
 mod execution;
 mod factory;
+mod frame_execution_runtime;
+mod graph_executor;
 mod ids;
 mod metadata;
 mod node_impl;
@@ -30,10 +31,6 @@ pub use command_recorder::{
     FrameCommandPassKind, FrameCommandRecorderSlot, FrameCommandRecorderState,
     FrameCommandRecorders, FrameCommandSubmission, FrameCommandSyncEvent,
 };
-pub use core_runner::{
-    NoopRenderGraphCoreRunnerHooks, RenderGraphCoreRunReport, RenderGraphCoreRunner,
-    RenderGraphCoreRunnerHooks, RenderGraphCoreRunnerState,
-};
 pub use error::{RenderGraphError, RenderGraphResult};
 pub use execution::{
     execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order, process_node,
@@ -41,6 +38,11 @@ pub use execution::{
     RenderGraphJobNode, RenderGraphJobPayload, RenderNodeProcessReport, RenderNodeProcessState,
 };
 pub use factory::{FinalRenderNodeGraph, RenderNodeGraphFactory};
+pub use frame_execution_runtime::FrameExecutionRuntime;
+pub use graph_executor::{
+    NoopRenderGraphExecutorHooks, RenderGraphExecutionInput, RenderGraphExecutionReport,
+    RenderGraphExecutor, RenderGraphExecutorHooks, RenderGraphExecutorState,
+};
 pub use ids::{NodeGroupId, RenderDependencyId, RenderNodeId, RenderNodeImplId};
 pub use metadata::{
     RenderNodeCommandListUsage, RenderNodeDebugName, RenderNodeDependencyKind, RenderNodeKind,
@@ -55,8 +57,8 @@ pub use render_node_graph::{
     AddGraphGroupImport, AddGraphOptions, GraphImportMap, RenderNodeGraph,
 };
 pub use render_node_impl_context::{
-    RenderCameraAccess, RenderNodeFrameRuntime, RenderNodeImplContext, RenderNodeImplContextInit,
-    RenderNodeImplKind,
+    RenderCameraAccess, RenderNodeFrameContextInit, RenderNodeFrameRuntime, RenderNodeImplContext,
+    RenderNodeImplContextInit, RenderNodeImplKind,
 };
 pub use system_nodes::{
     RenderNodeBeginRenderTargets, RenderNodeCleanupBatchData, RenderNodeDeclareResources,

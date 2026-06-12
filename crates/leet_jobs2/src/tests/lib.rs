@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use super::{
-    Builder, CompletionDeferral, Counter, Fence, JobHint, JobSystemConfig, LeetJobSystem, Priority,
-    RunContext, ScheduleParam,
+    Builder, CompletionDeferral, Counter, DispatcherHandle, Fence, JobHint, JobSystemConfig,
+    LeetJobSystem, Priority, RunContext, ScheduleParam,
 };
 
 #[test]
@@ -15,10 +15,12 @@ fn crate_root_reexports_public_types() {
     let _current_thread = LeetJobSystem::current_thread_index();
 
     fn accepts_builder_type(_: Option<&Builder>) {}
+    fn accepts_dispatcher_type(_: Option<&DispatcherHandle>) {}
     fn accepts_deferral_type(_: Option<&CompletionDeferral>) {}
     fn accepts_counter_type(_: Option<&Counter>) {}
     fn accepts_run_context_type(_: Option<&RunContext>) {}
     accepts_builder_type(None);
+    accepts_dispatcher_type(None);
     accepts_deferral_type(None);
     accepts_counter_type(None);
     accepts_run_context_type(None);
@@ -60,8 +62,14 @@ fn public_api_surface_matches_v1_scope() {
     let _: fn(&mut Builder, &'static str, u32, RangeFn, JobFn) =
         Builder::dispatch_parallel_for_with_epilogue_no_fence::<RangeFn, JobFn>;
     let _: fn(&mut Builder, &Counter) = Builder::dispatch_wait;
+    let _: fn(&Builder, &'static str) -> Counter = Builder::create_counter;
+    let _: fn(&Builder) -> DispatcherHandle = Builder::dispatcher;
     let _: fn(&mut Builder) = Builder::dispatch_fence_explicitly;
     let _: fn(&mut Builder) -> Counter = Builder::extract_wait_counter;
+
+    let _: fn(&DispatcherHandle, Priority, &'static str) -> Counter =
+        DispatcherHandle::create_counter;
+    let _: fn(&DispatcherHandle, Priority) -> Builder = DispatcherHandle::create_builder;
 
     let _: fn(&Counter, &'static str) -> CompletionDeferral = Counter::create_deferral;
     let _: fn(&mut Counter, Counter) = Counter::reset;

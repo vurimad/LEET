@@ -11,7 +11,7 @@ use super::{
     RenderNodeImplContextInit, RenderNodeImplId, RenderNodeImplStore, RenderNodeRole,
 };
 use crate::render_graph::resources::{
-    FrameResourceAllocator, RenderFlowGroup, RenderFlowSpace, ResourceAllocatorPhase,
+    RenderFlowGroup, RenderFlowSpace, RenderResourceAllocator, ResourceAllocatorPhase,
 };
 
 /// Per-executor mutable state reset at the beginning of every node process call.
@@ -361,7 +361,7 @@ pub fn process_node(
     command_groups: &CommandListGroupStore,
     node: RenderNodeId,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
 ) -> RenderGraphResult<RenderNodeProcessReport> {
     process_node_core(
@@ -384,7 +384,7 @@ pub fn process_node_with_runtime(
     command_groups: &CommandListGroupStore,
     node: RenderNodeId,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
     frame_runtime: &mut dyn RenderNodeFrameRuntime,
 ) -> RenderGraphResult<RenderNodeProcessReport> {
@@ -407,7 +407,7 @@ fn process_node_core(
     command_groups: &CommandListGroupStore,
     node: RenderNodeId,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
     frame_runtime: Option<&mut dyn RenderNodeFrameRuntime>,
     worker_index: u32,
@@ -509,18 +509,41 @@ pub fn execute_graph_dependency_counter_consume(
     impl_store: &RenderNodeImplStore,
     command_groups: &CommandListGroupStore,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
+    jobs: &mut RenderJobBuilder,
+    frame_runtime: Option<&mut dyn RenderNodeFrameRuntime>,
+) -> RenderGraphResult<RenderGraphDependencyExecutionReport> {
+    let mut counters = RenderGraphDependencyCounters::prepare(graph)?;
+    counters.release_external_kickoff();
+
+    execute_graph_dependency_counter_consume_prepared(
+        graph,
+        impl_store,
+        command_groups,
+        state,
+        allocator,
+        jobs,
+        frame_runtime,
+        &mut counters,
+    )
+}
+
+/// Executes graph nodes during consume with an already prepared dependency table.
+pub fn execute_graph_dependency_counter_consume_prepared(
+    graph: &RenderNodeGraph,
+    impl_store: &RenderNodeImplStore,
+    command_groups: &CommandListGroupStore,
+    state: &mut RenderNodeProcessState,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
     mut frame_runtime: Option<&mut dyn RenderNodeFrameRuntime>,
+    counters: &mut RenderGraphDependencyCounters,
 ) -> RenderGraphResult<RenderGraphDependencyExecutionReport> {
     if !allocator.phase().is_consume() {
         return Err(RenderGraphError::InvalidState {
             reason: "dependency-counter graph execution is a consume-phase operation",
         });
     }
-
-    let mut counters = RenderGraphDependencyCounters::prepare(graph)?;
-    counters.release_external_kickoff();
 
     let mut report = RenderGraphDependencyExecutionReport {
         scheduled_jobs: counters.scheduled_jobs(),
@@ -581,7 +604,7 @@ pub fn execute_graph_sequential_gpu_order(
     impl_store: &RenderNodeImplStore,
     command_groups: &CommandListGroupStore,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
 ) -> RenderGraphResult<Vec<RenderNodeProcessReport>> {
     if !graph.is_built() {
@@ -635,7 +658,7 @@ fn process_single_impl(
     implementation: &dyn RenderNodeImpl,
     init: RenderNodeImplContextInit,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
 ) -> RenderGraphResult<ProcessBodyReport> {
     let global_binding_mod = implementation.global_binding_mod();
@@ -657,7 +680,7 @@ fn process_single_impl_with_runtime(
     implementation: &dyn RenderNodeImpl,
     init: RenderNodeImplContextInit,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
     frame_runtime: &mut dyn RenderNodeFrameRuntime,
 ) -> RenderGraphResult<ProcessBodyReport> {
@@ -682,7 +705,7 @@ fn process_command_list_group(
     node: RenderNodeId,
     init: RenderNodeImplContextInit,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
 ) -> RenderGraphResult<ProcessBodyReport> {
     let group = command_groups.get(node)?;
@@ -729,7 +752,7 @@ fn process_command_list_group_with_runtime(
     node: RenderNodeId,
     init: RenderNodeImplContextInit,
     state: &mut RenderNodeProcessState,
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     jobs: &mut RenderJobBuilder,
     frame_runtime: &mut dyn RenderNodeFrameRuntime,
 ) -> RenderGraphResult<ProcessBodyReport> {

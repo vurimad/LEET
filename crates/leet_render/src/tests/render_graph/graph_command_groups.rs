@@ -1,9 +1,9 @@
 use super::super::{
-    AddGraphOptions, CommandListGroupStore, FrameResourceAllocator, RenderGraphError,
-    RenderNodeCommandListUsage, RenderNodeDebugName, RenderNodeDependencyKind,
-    RenderNodeExecutionMetadata, RenderNodeGraph, RenderNodeGraphFactory, RenderNodeImpl,
-    RenderNodeImplContext, RenderNodeKind, RenderNodeParameters, RenderNodeRole, RenderNodeSubtype,
-    RenderQueueKind, ResourceAllocatorPhase, ResourceRequest,
+    AddGraphOptions, CommandListGroupStore, RenderGraphError, RenderNodeCommandListUsage,
+    RenderNodeDebugName, RenderNodeDependencyKind, RenderNodeExecutionMetadata, RenderNodeGraph,
+    RenderNodeGraphFactory, RenderNodeImpl, RenderNodeImplContext, RenderNodeKind,
+    RenderNodeParameters, RenderNodeRole, RenderNodeSubtype, RenderQueueKind,
+    RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
 };
 use crate::RenderGraphResult;
 use leet_jobs2::Builder as RenderJobBuilder;
@@ -433,7 +433,7 @@ fn command_group_parent_uses_explicit_parameters() {
 
 #[test]
 fn context_queue_scope_wrappers_record_begin_and_end_requests() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -447,10 +447,10 @@ fn context_queue_scope_wrappers_record_begin_and_end_requests() {
         rctx.end_queue().unwrap();
     }
 
-    let requests = allocator
+    let request_group = allocator
         .request_group(super::super::FrameResourceFlowGroup::new(0))
-        .unwrap()
-        .requests();
+        .unwrap();
+    let requests = request_group.requests();
 
     assert!(matches!(
         requests[0],

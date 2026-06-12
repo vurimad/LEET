@@ -1,4 +1,4 @@
-//! Parallel-ready resource allocator reference implementation.
+//! Renderer-lifetime resource allocator orchestration.
 
 use crate::RenderDevice;
 
@@ -11,48 +11,45 @@ use super::{
     RequestTime, ResourceAllocatorPhase, ResourceRequest, MAX_RENDER_FLOW_GROUPS,
 };
 use std::{
-    cell::UnsafeCell,
     collections::HashMap,
     ops::{Deref, DerefMut},
-    sync::{
-        atomic::{AtomicU8, AtomicUsize, Ordering},
-        Arc, Mutex, MutexGuard,
-    },
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 #[derive(Clone)]
 pub struct RenderResourceAllocator {
-    inner: Arc<RenderResourceAllocatorInner>,
+    inner: Arc<Mutex<RenderResourceAllocatorState>>,
 }
 
-struct RenderResourceAllocatorInner {
-    phase: AtomicAllocatorPhase,
-    request_groups: RenderFlowRequestGroups,
-    frame_state: Mutex<RenderResourceFrameState>,
-    resolution: Mutex<Option<Arc<FrameResourceResolution>>>,
+struct RenderResourceAllocatorState {
+    phase: ResourceAllocatorPhase,
+    request_groups: Vec<RequestGroup>,
+    frame_state: RenderResourceFrameState,
+    resolution: Option<Arc<FrameResourceResolution>>,
+    current_consume_time: Option<RequestTime>,
 }
 
 impl RenderResourceAllocator {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RenderResourceAllocatorInner::new()),
+            inner: Arc::new(Mutex::new(RenderResourceAllocatorState::new())),
         }
     }
 
     pub fn reset_for_frame(&self) {
-        self.inner.reset_for_frame();
+        self.state_mut().reset_for_frame();
     }
 
     pub fn phase(&self) -> ResourceAllocatorPhase {
-        self.inner.phase()
+        self.state().phase()
     }
 
     pub fn is_consume_phase(&self) -> bool {
-        self.phase().is_consume()
+        self.state().is_consume_phase()
     }
 
     pub fn set_phase(&self, next: ResourceAllocatorPhase) -> FrameResourceResult<()> {
-        self.inner.set_phase(next)
+        self.state_mut().set_phase(next)
     }
 
     pub fn record_request(
@@ -60,11 +57,11 @@ impl RenderResourceAllocator {
         flow_group: RenderFlowGroup,
         request: ResourceRequest,
     ) -> FrameResourceResult<RequestGroupAction> {
-        self.inner.record_request(flow_group, request)
+        self.state_mut().record_request(flow_group, request)
     }
 
     pub fn prepare_preconsume_groups(&self, group_count: usize) -> FrameResourceResult<()> {
-        self.inner.prepare_preconsume_groups(group_count)
+        self.state_mut().prepare_preconsume_groups(group_count)
     }
 
     pub fn request_is_declared(
@@ -72,7 +69,7 @@ impl RenderResourceAllocator {
         flow_group: RenderFlowGroup,
         tag: RenderFlowNameTag,
     ) -> FrameResourceResult<bool> {
-        self.inner.request_is_declared(flow_group, tag)
+        self.state_mut().request_is_declared(flow_group, tag)
     }
 
     pub fn request_decision(
@@ -80,26 +77,30 @@ impl RenderResourceAllocator {
         flow_group: RenderFlowGroup,
         value: bool,
     ) -> FrameResourceResult<bool> {
-        self.inner.request_decision(flow_group, value)
+        self.state_mut().request_decision(flow_group, value)
     }
 
     pub fn next_request_auto_id(
         &self,
         flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<RenderFlowAutoId> {
-        self.inner.next_request_auto_id(flow_group)
+        self.state().next_request_auto_id(flow_group)
     }
 
     pub fn request_group(&self, flow_group: RenderFlowGroup) -> Option<RequestGroup> {
-        self.inner.request_group(flow_group)
+        self.state().request_group(flow_group).cloned()
     }
 
     pub fn request_groups(&self) -> Vec<RequestGroup> {
-        self.inner.request_groups()
+        self.state().request_groups().to_vec()
     }
 
     pub fn request_group_count(&self) -> usize {
-        self.inner.request_group_count()
+        self.state().request_group_count()
+    }
+
+    pub fn current_consume_time(&self) -> Option<RequestTime> {
+        self.state().current_consume_time()
     }
 
     pub fn diagnostics(&self) -> FrameResourceDiagnostics<'_> {
@@ -107,49 +108,48 @@ impl RenderResourceAllocator {
     }
 
     pub fn lifetime_solution(&self) -> Option<FrameLifetimeSolution> {
-        self.inner.lifetime_solution()
+        self.state().lifetime_solution().cloned()
     }
 
     pub fn pool_plan(&self) -> Option<FrameResourcePoolPlan> {
-        self.inner.pool_plan()
+        self.state().pool_plan().cloned()
     }
 
     pub fn resource_pool(&self) -> FrameResourcePoolReadGuard<'_> {
         FrameResourcePoolReadGuard {
-            guard: self.inner.frame_state(),
+            guard: self.state(),
         }
     }
 
     pub fn resource_pool_mut(&self) -> FrameResourcePoolWriteGuard<'_> {
         FrameResourcePoolWriteGuard {
-            guard: self.inner.frame_state(),
+            guard: self.state_mut(),
         }
     }
 
     pub fn resources_resolved(&self) -> bool {
-        self.inner.resources_resolved()
+        self.state().resources_resolved()
     }
 
     pub fn process_eviction(&self) -> bool {
-        self.inner.process_eviction()
+        self.state().process_eviction()
     }
 
     pub fn set_process_eviction(&self, process_eviction: bool) {
-        self.inner.set_process_eviction(process_eviction);
+        self.state_mut().set_process_eviction(process_eviction);
     }
 
     pub fn resolved_allocation_id(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<Option<FrameResourceAllocationId>> {
-        self.inner.resolved_allocation_id(tag, flow_group)
+        self.state().resolved_allocation_id(tag)
     }
 
     pub(crate) fn frame_resource_resolution(
         &self,
     ) -> FrameResourceResult<Arc<FrameResourceResolution>> {
-        self.inner.frame_resource_resolution()
+        self.state().frame_resource_resolution()
     }
 
     pub fn register_external_texture(
@@ -159,7 +159,7 @@ impl RenderResourceAllocator {
         texture: wgpu::Texture,
         default_view: wgpu::TextureView,
     ) -> FrameResourceResult<()> {
-        self.inner
+        self.state_mut()
             .register_external_texture(external_id, desc, texture, default_view)
     }
 
@@ -169,153 +169,170 @@ impl RenderResourceAllocator {
         desc: FrameBufferDesc,
         buffer: wgpu::Buffer,
     ) -> FrameResourceResult<()> {
-        self.inner
+        self.state_mut()
             .register_external_buffer(external_id, desc, buffer)
     }
 
     pub fn resolve_frame_resources(&self, render_device: &RenderDevice) -> FrameResourceResult<()> {
-        self.inner.resolve_frame_resources(render_device)
+        self.state_mut().resolve_frame_resources(render_device)
     }
 
-    pub fn get_texture(
-        &self,
-        tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<FrameTextureResource> {
-        self.inner.get_texture(tag, flow_group)
+    pub fn get_texture(&self, tag: RenderFlowNameTag) -> FrameResourceResult<FrameTextureResource> {
+        self.state().get_texture(tag).cloned()
     }
 
     pub fn try_get_texture(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<Option<FrameTextureResource>> {
-        self.inner.try_get_texture(tag, flow_group)
+        self.state()
+            .try_get_texture(tag)
+            .map(|resource| resource.cloned())
     }
 
-    pub fn get_buffer(
-        &self,
-        tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<FrameBufferResource> {
-        self.inner.get_buffer(tag, flow_group)
+    pub fn get_buffer(&self, tag: RenderFlowNameTag) -> FrameResourceResult<FrameBufferResource> {
+        self.state().get_buffer(tag).cloned()
     }
 
     pub fn try_get_buffer(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<Option<FrameBufferResource>> {
-        self.inner.try_get_buffer(tag, flow_group)
+        self.state()
+            .try_get_buffer(tag)
+            .map(|resource| resource.cloned())
     }
 
     pub fn clear_all_caches(&self) -> FrameResourceResult<()> {
-        self.inner.clear_all_caches()
+        self.state_mut().clear_all_caches()
     }
 
     pub fn caches_cleared_count(&self) -> u32 {
-        self.inner.caches_cleared_count()
+        self.state().caches_cleared_count()
     }
 
     pub fn validate_resource_retrieval_phase(&self) -> FrameResourceResult<()> {
-        self.inner.validate_resource_retrieval_phase()
+        self.state().validate_resource_retrieval_phase()
     }
-}
 
-impl Default for RenderResourceAllocator {
-    fn default() -> Self {
-        Self::new()
+    fn state(&self) -> MutexGuard<'_, RenderResourceAllocatorState> {
+        self.inner
+            .lock()
+            .expect("render resource allocator state mutex was poisoned")
+    }
+
+    fn state_mut(&self) -> MutexGuard<'_, RenderResourceAllocatorState> {
+        self.state()
     }
 }
 
 pub struct FrameResourcePoolReadGuard<'a> {
-    guard: MutexGuard<'a, RenderResourceFrameState>,
+    guard: MutexGuard<'a, RenderResourceAllocatorState>,
 }
 
 impl Deref for FrameResourcePoolReadGuard<'_> {
     type Target = FrameResourcePool;
 
     fn deref(&self) -> &Self::Target {
-        &self.guard.resource_pool
+        &self.guard.frame_state.resource_pool
     }
 }
 
 pub struct FrameResourcePoolWriteGuard<'a> {
-    guard: MutexGuard<'a, RenderResourceFrameState>,
+    guard: MutexGuard<'a, RenderResourceAllocatorState>,
 }
 
 impl Deref for FrameResourcePoolWriteGuard<'_> {
     type Target = FrameResourcePool;
 
     fn deref(&self) -> &Self::Target {
-        &self.guard.resource_pool
+        &self.guard.frame_state.resource_pool
     }
 }
 
 impl DerefMut for FrameResourcePoolWriteGuard<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.guard.resource_pool
+        &mut self.guard.frame_state.resource_pool
     }
 }
 
-impl RenderResourceAllocatorInner {
+impl RenderResourceAllocatorState {
     fn new() -> Self {
         Self {
-            phase: AtomicAllocatorPhase::new(ResourceAllocatorPhase::Startup),
-            request_groups: RenderFlowRequestGroups::new(),
-            frame_state: Mutex::new(RenderResourceFrameState::new()),
-            resolution: Mutex::new(None),
+            phase: ResourceAllocatorPhase::Startup,
+            request_groups: Vec::new(),
+            frame_state: RenderResourceFrameState::new(),
+            resolution: None,
+            current_consume_time: None,
         }
     }
 
-    fn reset_for_frame(&self) {
-        self.phase.store(ResourceAllocatorPhase::Startup);
-        self.request_groups.reset_active_groups();
-        *self.resolution() = None;
-        self.frame_state().reset_for_frame();
+    fn reset_for_frame(&mut self) {
+        self.phase = ResourceAllocatorPhase::Startup;
+        self.request_groups.clear();
+        self.resolution = None;
+        self.frame_state.reset_for_frame();
+        self.current_consume_time = None;
     }
 
-    fn phase(&self) -> ResourceAllocatorPhase {
-        self.phase.load()
+    pub fn phase(&self) -> ResourceAllocatorPhase {
+        self.phase
     }
 
-    fn set_phase(&self, next: ResourceAllocatorPhase) -> FrameResourceResult<()> {
+    pub fn is_consume_phase(&self) -> bool {
+        self.phase.is_consume()
+    }
+
+    pub fn set_phase(&mut self, next: ResourceAllocatorPhase) -> FrameResourceResult<()> {
         self.validate_transition(next)?;
 
         match next {
             ResourceAllocatorPhase::Startup => {}
             ResourceAllocatorPhase::PreConsume => self.begin_preconsume(),
             ResourceAllocatorPhase::Resolve => self.resolve_request_stream_shell()?,
-            ResourceAllocatorPhase::Consume => self.begin_consume()?,
+            ResourceAllocatorPhase::Consume => self.begin_consume(),
             ResourceAllocatorPhase::Cleanup => self.begin_cleanup()?,
         }
 
-        self.phase.store(next);
+        self.phase = next;
         Ok(())
     }
 
-    fn record_request(
-        &self,
+    pub fn record_request(
+        &mut self,
         flow_group: RenderFlowGroup,
         request: ResourceRequest,
     ) -> FrameResourceResult<RequestGroupAction> {
-        let phase = self.phase();
-        self.request_groups.apply(flow_group, phase, request)
+        let phase = self.phase;
+        let action = self.request_group_mut(flow_group)?.apply(phase, request)?;
+        if phase == ResourceAllocatorPhase::Consume {
+            self.current_consume_time = Some(RequestTime::new(flow_group, action.id().get()));
+        }
+        Ok(action)
     }
 
-    fn prepare_preconsume_groups(&self, group_count: usize) -> FrameResourceResult<()> {
-        if self.phase() != ResourceAllocatorPhase::PreConsume {
+    pub fn prepare_preconsume_groups(&mut self, group_count: usize) -> FrameResourceResult<()> {
+        if self.phase != ResourceAllocatorPhase::PreConsume {
             return Err(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::prepare_preconsume_groups",
                 reason: "request groups can only be prepared during pre-consume",
             });
         }
+        if group_count > MAX_RENDER_FLOW_GROUPS {
+            return Err(FrameResourceError::InvalidOperation {
+                operation: "RenderResourceAllocator::prepare_preconsume_groups",
+                reason: "requested render-flow group count exceeds the allocator limit",
+            });
+        }
 
-        self.request_groups.prepare_preconsume_groups(group_count)
+        self.request_groups.clear();
+        self.request_groups
+            .resize_with(group_count, RequestGroup::new);
+        Ok(())
     }
 
-    fn request_is_declared(
-        &self,
+    pub fn request_is_declared(
+        &mut self,
         flow_group: RenderFlowGroup,
         tag: RenderFlowNameTag,
     ) -> FrameResourceResult<bool> {
@@ -324,8 +341,8 @@ impl RenderResourceAllocatorInner {
         Ok(declared)
     }
 
-    fn request_decision(
-        &self,
+    pub fn request_decision(
+        &mut self,
         flow_group: RenderFlowGroup,
         value: bool,
     ) -> FrameResourceResult<bool> {
@@ -336,14 +353,22 @@ impl RenderResourceAllocatorInner {
         Ok(*value)
     }
 
-    fn next_request_auto_id(
+    pub fn next_request_auto_id(
         &self,
         flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<RenderFlowAutoId> {
-        let group = self.request_groups.group(flow_group)?;
-        let request_index = match self.phase() {
-            ResourceAllocatorPhase::PreConsume => group.requests().len(),
-            ResourceAllocatorPhase::Consume => group.consume_cursor(),
+        let request_index = match self.phase {
+            ResourceAllocatorPhase::PreConsume => self
+                .request_group(flow_group)
+                .map(|group| group.requests().len())
+                .unwrap_or(0),
+            ResourceAllocatorPhase::Consume => self
+                .request_group(flow_group)
+                .map(|group| group.consume_cursor())
+                .ok_or(FrameResourceError::InvalidOperation {
+                    operation: "RenderResourceAllocator::next_request_auto_id",
+                    reason: "consume cannot generate a temp tag for an untouched flow group",
+                })?,
             _ => {
                 return Err(FrameResourceError::InvalidOperation {
                     operation: "RenderResourceAllocator::next_request_auto_id",
@@ -366,71 +391,79 @@ impl RenderResourceAllocatorInner {
         RenderFlowAutoId::new((group << 16) | (index + 1))
     }
 
-    fn request_group(&self, flow_group: RenderFlowGroup) -> Option<RequestGroup> {
-        self.request_groups.try_group(flow_group).cloned()
+    pub fn request_group(&self, flow_group: RenderFlowGroup) -> Option<&RequestGroup> {
+        if !flow_group.is_valid() {
+            return None;
+        }
+
+        self.request_groups.get(flow_group.index())
     }
 
-    fn request_groups(&self) -> Vec<RequestGroup> {
-        self.request_groups.snapshot()
+    pub fn request_groups(&self) -> &[RequestGroup] {
+        &self.request_groups
     }
 
-    fn request_group_count(&self) -> usize {
-        self.request_groups.active_group_count()
+    pub fn request_group_count(&self) -> usize {
+        self.request_groups.len()
     }
 
-    fn lifetime_solution(&self) -> Option<FrameLifetimeSolution> {
-        self.resolution()
+    pub fn current_consume_time(&self) -> Option<RequestTime> {
+        self.current_consume_time
+    }
+
+    pub fn lifetime_solution(&self) -> Option<&FrameLifetimeSolution> {
+        self.resolution
             .as_ref()
-            .map(|resolution| resolution.lifetime_solution().clone())
+            .map(|resolution| resolution.lifetime_solution())
     }
 
-    fn pool_plan(&self) -> Option<FrameResourcePoolPlan> {
-        self.resolution()
+    pub fn pool_plan(&self) -> Option<&FrameResourcePoolPlan> {
+        self.resolution
             .as_ref()
-            .map(|resolution| resolution.pool_plan().clone())
+            .map(|resolution| resolution.pool_plan())
     }
 
-    fn resources_resolved(&self) -> bool {
-        self.resolution()
+    pub fn resources_resolved(&self) -> bool {
+        self.resolution
             .as_ref()
             .is_some_and(|resolution| resolution.resources_resolved())
     }
 
-    fn process_eviction(&self) -> bool {
-        self.frame_state().process_eviction
+    pub fn process_eviction(&self) -> bool {
+        self.frame_state.process_eviction
     }
 
-    fn set_process_eviction(&self, process_eviction: bool) {
-        self.frame_state().process_eviction = process_eviction;
+    pub fn set_process_eviction(&mut self, process_eviction: bool) {
+        self.frame_state.process_eviction = process_eviction;
     }
 
-    fn resolved_allocation_id(
+    pub fn resolved_allocation_id(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<Option<FrameResourceAllocationId>> {
-        self.try_resolved_allocation_id(tag, flow_group)
+        self.try_resolved_allocation_id(tag)
     }
 
-    fn frame_resource_resolution(&self) -> FrameResourceResult<Arc<FrameResourceResolution>> {
+    pub(crate) fn frame_resource_resolution(
+        &self,
+    ) -> FrameResourceResult<Arc<FrameResourceResolution>> {
         let resolution = self
-            .resolution()
+            .resolution
             .as_ref()
             .ok_or(FrameResourceError::InvalidState {
                 reason: "frame resource resolution is missing",
-            })?
-            .clone();
+            })?;
         if !resolution.resources_resolved() {
             return Err(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::frame_resource_resolution",
                 reason: "frame resources have not been materialized",
             });
         }
-        Ok(resolution)
+        Ok(Arc::clone(resolution))
     }
 
-    fn register_external_texture(
-        &self,
+    pub fn register_external_texture(
+        &mut self,
         external_id: ExternalFrameResourceId,
         desc: FrameTextureDesc,
         texture: wgpu::Texture,
@@ -446,8 +479,8 @@ impl RenderResourceAllocatorInner {
         )
     }
 
-    fn register_external_buffer(
-        &self,
+    pub fn register_external_buffer(
+        &mut self,
         external_id: ExternalFrameResourceId,
         desc: FrameBufferDesc,
         buffer: wgpu::Buffer,
@@ -458,27 +491,28 @@ impl RenderResourceAllocatorInner {
         )
     }
 
-    fn resolve_frame_resources(&self, render_device: &RenderDevice) -> FrameResourceResult<()> {
-        if self.phase() != ResourceAllocatorPhase::Resolve {
+    pub fn resolve_frame_resources(
+        &mut self,
+        render_device: &RenderDevice,
+    ) -> FrameResourceResult<()> {
+        if self.phase != ResourceAllocatorPhase::Resolve {
             return Err(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::resolve_frame_resources",
                 reason: "frame resources can only be materialized during resolve",
             });
         }
 
-        let unresolved_resolution =
-            self.resolution()
-                .as_ref()
-                .cloned()
-                .ok_or(FrameResourceError::InvalidState {
-                    reason: "lifetime solution is missing during resolve",
-                })?;
-        let lifetime_solution = unresolved_resolution.lifetime_solution().clone();
-
-        let mut frame_state = self.frame_state();
+        let lifetime_solution = self
+            .resolution
+            .as_ref()
+            .ok_or(FrameResourceError::InvalidState {
+                reason: "lifetime solution is missing during resolve",
+            })?
+            .lifetime_solution()
+            .clone();
         let pool_plan = FrameResourcePoolPlan::plan_with_cached_allocations(
             &lifetime_solution,
-            &frame_state.resource_pool.planner_candidates(),
+            &self.frame_state.resource_pool.planner_candidates(),
         )?;
         let allocation_requests = lifetime_solution.allocation_requests().to_vec();
 
@@ -491,24 +525,26 @@ impl RenderResourceAllocatorInner {
                 })?;
 
             if assignment.reused_existing() {
-                frame_state.resource_pool.mark_used_this_frame_for_request(
-                    assignment.allocation_id(),
-                    allocation_request.desc(),
-                )?;
+                self.frame_state
+                    .resource_pool
+                    .mark_used_this_frame_for_request(
+                        assignment.allocation_id(),
+                        allocation_request.desc(),
+                    )?;
                 continue;
             }
 
             match allocation_request.source() {
                 AllocationRequestSource::Owned => match allocation_request.desc() {
                     super::FrameResourceDesc::Texture(desc) => {
-                        frame_state.resource_pool.create_owned_texture(
+                        self.frame_state.resource_pool.create_owned_texture(
                             assignment.allocation_id(),
                             desc.clone(),
                             render_device,
                         )?;
                     }
                     super::FrameResourceDesc::Buffer(desc) => {
-                        frame_state.resource_pool.create_owned_buffer(
+                        self.frame_state.resource_pool.create_owned_buffer(
                             assignment.allocation_id(),
                             desc.clone(),
                             render_device,
@@ -517,7 +553,7 @@ impl RenderResourceAllocatorInner {
                 },
                 AllocationRequestSource::Imported(external_id) => {
                     Self::attach_external_resource(
-                        &mut frame_state,
+                        &mut self.frame_state,
                         assignment.allocation_id(),
                         allocation_request.desc(),
                         external_id,
@@ -526,7 +562,7 @@ impl RenderResourceAllocatorInner {
                 }
                 AllocationRequestSource::ExternalSwap(external_id) => {
                     Self::attach_external_resource(
-                        &mut frame_state,
+                        &mut self.frame_state,
                         assignment.allocation_id(),
                         allocation_request.desc(),
                         external_id,
@@ -536,38 +572,42 @@ impl RenderResourceAllocatorInner {
             }
 
             if assignment.class() == FrameResourceAllocationClass::OwnedRestricted {
-                frame_state
+                self.frame_state
                     .resource_pool
                     .mark_non_cacheable(assignment.allocation_id())?;
             }
         }
 
-        *self.resolution() = Some(Arc::new(FrameResourceResolution::resolved(
-            lifetime_solution,
+        let resolution = self
+            .resolution
+            .as_ref()
+            .ok_or(FrameResourceError::InvalidState {
+                reason: "frame resource resolution was lost during resolve",
+            })?;
+        self.resolution = Some(Arc::new(FrameResourceResolution::resolved(
+            resolution.lifetime_solution().clone(),
             pool_plan,
-            frame_state.resource_pool.allocations().to_vec(),
+            self.frame_state.resource_pool.allocations().to_vec(),
         )));
         Ok(())
     }
 
-    fn get_texture(
+    pub fn get_texture(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<FrameTextureResource> {
-        self.try_get_texture(tag, flow_group)?
+    ) -> FrameResourceResult<&FrameTextureResource> {
+        self.try_get_texture(tag)?
             .ok_or(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::get_texture",
-                reason: "tag does not resolve to a texture at the current flow-group consume time",
+                reason: "tag does not resolve to a texture at the current consume time",
             })
     }
 
-    fn try_get_texture(
+    pub fn try_get_texture(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<Option<FrameTextureResource>> {
-        let Some(resource) = self.try_get_resource(tag, flow_group)? else {
+    ) -> FrameResourceResult<Option<&FrameTextureResource>> {
+        let Some(resource) = self.try_get_resource(tag)? else {
             return Ok(None);
         };
 
@@ -580,24 +620,19 @@ impl RenderResourceAllocatorInner {
         }
     }
 
-    fn get_buffer(
-        &self,
-        tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<FrameBufferResource> {
-        self.try_get_buffer(tag, flow_group)?
+    pub fn get_buffer(&self, tag: RenderFlowNameTag) -> FrameResourceResult<&FrameBufferResource> {
+        self.try_get_buffer(tag)?
             .ok_or(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::get_buffer",
-                reason: "tag does not resolve to a buffer at the current flow-group consume time",
+                reason: "tag does not resolve to a buffer at the current consume time",
             })
     }
 
-    fn try_get_buffer(
+    pub fn try_get_buffer(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<Option<FrameBufferResource>> {
-        let Some(resource) = self.try_get_resource(tag, flow_group)? else {
+    ) -> FrameResourceResult<Option<&FrameBufferResource>> {
+        let Some(resource) = self.try_get_resource(tag)? else {
             return Ok(None);
         };
 
@@ -610,26 +645,25 @@ impl RenderResourceAllocatorInner {
         }
     }
 
-    fn clear_all_caches(&self) -> FrameResourceResult<()> {
-        if self.phase() != ResourceAllocatorPhase::Cleanup {
+    pub fn clear_all_caches(&mut self) -> FrameResourceResult<()> {
+        if self.phase != ResourceAllocatorPhase::Cleanup {
             return Err(FrameResourceError::InvalidOperation {
                 operation: "RenderResourceAllocator::clear_all_caches",
                 reason: "cache clearing is only valid during cleanup",
             });
         }
 
-        let mut frame_state = self.frame_state();
-        frame_state.caches_cleared_count += 1;
-        frame_state.resource_pool.clear_all_caches();
+        self.frame_state.caches_cleared_count += 1;
+        self.frame_state.resource_pool.clear_all_caches();
         Ok(())
     }
 
-    fn caches_cleared_count(&self) -> u32 {
-        self.frame_state().caches_cleared_count
+    pub fn caches_cleared_count(&self) -> u32 {
+        self.frame_state.caches_cleared_count
     }
 
-    fn validate_resource_retrieval_phase(&self) -> FrameResourceResult<()> {
-        if self.phase() == ResourceAllocatorPhase::Consume {
+    pub fn validate_resource_retrieval_phase(&self) -> FrameResourceResult<()> {
+        if self.phase == ResourceAllocatorPhase::Consume {
             Ok(())
         } else {
             Err(FrameResourceError::InvalidOperation {
@@ -641,7 +675,7 @@ impl RenderResourceAllocatorInner {
 
     fn validate_transition(&self, next: ResourceAllocatorPhase) -> FrameResourceResult<()> {
         let valid = matches!(
-            (self.phase(), next),
+            (self.phase, next),
             (
                 ResourceAllocatorPhase::Cleanup,
                 ResourceAllocatorPhase::Startup
@@ -670,15 +704,17 @@ impl RenderResourceAllocatorInner {
         }
     }
 
-    fn begin_preconsume(&self) {
-        *self.resolution() = None;
-        self.frame_state().external_resources.clear();
-        self.request_groups.reset_active_groups();
+    fn begin_preconsume(&mut self) {
+        self.resolution = None;
+        self.frame_state.external_resources.clear();
+        self.current_consume_time = None;
+        for group in &mut self.request_groups {
+            group.reset_for_preconsume();
+        }
     }
 
-    fn resolve_request_stream_shell(&self) -> FrameResourceResult<()> {
-        let request_groups = self.request_groups.snapshot();
-        for group in &request_groups {
+    fn resolve_request_stream_shell(&mut self) -> FrameResourceResult<()> {
+        for group in &self.request_groups {
             for request in group.requests() {
                 if let ResourceRequest::Declare { desc, .. } = request {
                     desc.validate()?;
@@ -686,31 +722,53 @@ impl RenderResourceAllocatorInner {
             }
         }
 
-        let lifetime_solution = FrameLifetimeSolution::solve_request_groups(&request_groups)?;
+        let lifetime_solution = FrameLifetimeSolution::solve_request_groups(&self.request_groups)?;
         let pool_plan = FrameResourcePoolPlan::plan(&lifetime_solution)?;
-        *self.resolution() = Some(Arc::new(FrameResourceResolution::unresolved(
+        self.resolution = Some(Arc::new(FrameResourceResolution::unresolved(
             lifetime_solution,
             pool_plan,
         )));
         Ok(())
     }
 
-    fn begin_consume(&self) -> FrameResourceResult<()> {
-        self.request_groups.reset_consume_cursors()
+    fn begin_consume(&mut self) {
+        self.current_consume_time = None;
+        for group in &mut self.request_groups {
+            group.reset_consume_cursor();
+        }
     }
 
-    fn begin_cleanup(&self) -> FrameResourceResult<()> {
-        self.request_groups.validate_consume_finished()?;
-        self.request_groups.reset_active_groups();
-        *self.resolution() = None;
+    fn begin_cleanup(&mut self) -> FrameResourceResult<()> {
+        for group in &self.request_groups {
+            group.validate_consume_finished()?;
+        }
 
-        let mut frame_state = self.frame_state();
-        frame_state.external_resources.clear();
-        let process_eviction = frame_state.process_eviction;
-        frame_state
+        self.request_groups.clear();
+        self.resolution = None;
+        self.frame_state.external_resources.clear();
+        self.current_consume_time = None;
+        self.frame_state
             .resource_pool
-            .cleanup_after_frame_with_eviction(process_eviction);
+            .cleanup_after_frame_with_eviction(self.frame_state.process_eviction);
         Ok(())
+    }
+
+    fn request_group_mut(
+        &mut self,
+        flow_group: RenderFlowGroup,
+    ) -> FrameResourceResult<&mut RequestGroup> {
+        if !flow_group.is_valid() {
+            return Err(FrameResourceError::InvalidOperation {
+                operation: "RenderResourceAllocator::request_group_mut",
+                reason: "render-flow group exceeds the allocator limit",
+            });
+        }
+
+        let index = flow_group.index();
+        while self.request_groups.len() <= index {
+            self.request_groups.push(RequestGroup::new());
+        }
+        Ok(&mut self.request_groups[index])
     }
 
     fn is_declared_at_current_request_position(
@@ -718,8 +776,10 @@ impl RenderResourceAllocatorInner {
         flow_group: RenderFlowGroup,
         tag: RenderFlowNameTag,
     ) -> FrameResourceResult<bool> {
-        let group = self.request_groups.group(flow_group)?;
-        let end = match self.phase() {
+        let Some(group) = self.request_group(flow_group) else {
+            return Ok(false);
+        };
+        let end = match self.phase {
             ResourceAllocatorPhase::PreConsume => group.requests().len(),
             ResourceAllocatorPhase::Consume => group.consume_cursor(),
             _ => {
@@ -739,48 +799,60 @@ impl RenderResourceAllocatorInner {
     fn try_get_resource(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<Option<FrameResource>> {
+    ) -> FrameResourceResult<Option<&FrameResource>> {
         let resolution = self.resolution_for_consume()?;
-        let current_time = self.request_groups.current_consume_time(flow_group)?;
+        let current_time = self
+            .current_consume_time
+            .ok_or(FrameResourceError::InvalidState {
+                reason: "no current consume request time is available for resource retrieval",
+            })?;
         resolution.try_get_resource_at(tag, current_time)
     }
 
     fn try_resolved_allocation_id(
         &self,
         tag: RenderFlowNameTag,
-        flow_group: RenderFlowGroup,
     ) -> FrameResourceResult<Option<FrameResourceAllocationId>> {
-        let resolution = self.resolution_for_consume()?;
-        let current_time = self.request_groups.current_consume_time(flow_group)?;
-        resolution.resolved_allocation_id_at(tag, current_time)
-    }
-
-    fn resolution_for_consume(&self) -> FrameResourceResult<Arc<FrameResourceResolution>> {
         self.validate_resource_retrieval_phase()?;
-        let resolution =
-            self.resolution()
-                .as_ref()
-                .cloned()
-                .ok_or(FrameResourceError::InvalidState {
-                    reason: "frame resource resolution is missing during consume",
-                })?;
-        if !resolution.resources_resolved() {
+        if !self.resources_resolved() {
             return Err(FrameResourceError::InvalidOperation {
-                operation: "RenderResourceAllocator::resolution_for_consume",
+                operation: "RenderResourceAllocator::try_resolved_allocation_id",
                 reason: "frame resources have not been materialized",
             });
         }
-        Ok(resolution)
+
+        let current_time = self
+            .current_consume_time
+            .ok_or(FrameResourceError::InvalidState {
+                reason: "no current consume request time is available for resource retrieval",
+            })?;
+        self.resolution_for_consume()?
+            .resolved_allocation_id_at(tag, current_time)
+    }
+
+    fn resolution_for_consume(&self) -> FrameResourceResult<&FrameResourceResolution> {
+        self.validate_resource_retrieval_phase()?;
+        if !self.resources_resolved() {
+            return Err(FrameResourceError::InvalidOperation {
+                operation: "RenderResourceAllocator::try_resolved_allocation_id",
+                reason: "frame resources have not been materialized",
+            });
+        }
+
+        self.resolution
+            .as_deref()
+            .ok_or(FrameResourceError::InvalidState {
+                reason: "frame resource resolution is missing during consume",
+            })
     }
 
     fn register_external_resource(
-        &self,
+        &mut self,
         external_id: ExternalFrameResourceId,
         resource: PendingExternalFrameResource,
     ) -> FrameResourceResult<()> {
         if self
-            .frame_state()
+            .frame_state
             .external_resources
             .insert(external_id, resource)
             .is_some()
@@ -871,199 +943,11 @@ impl RenderResourceAllocatorInner {
             }),
         }
     }
-
-    fn frame_state(&self) -> MutexGuard<'_, RenderResourceFrameState> {
-        self.frame_state
-            .lock()
-            .expect("render resource frame state mutex was poisoned")
-    }
-
-    fn resolution(&self) -> MutexGuard<'_, Option<Arc<FrameResourceResolution>>> {
-        self.resolution
-            .lock()
-            .expect("render resource resolution mutex was poisoned")
-    }
 }
 
-struct AtomicAllocatorPhase {
-    phase: AtomicU8,
-}
-
-impl AtomicAllocatorPhase {
-    fn new(phase: ResourceAllocatorPhase) -> Self {
-        Self {
-            phase: AtomicU8::new(encode_phase(phase)),
-        }
-    }
-
-    fn load(&self) -> ResourceAllocatorPhase {
-        decode_phase(self.phase.load(Ordering::Acquire))
-    }
-
-    fn store(&self, phase: ResourceAllocatorPhase) {
-        self.phase.store(encode_phase(phase), Ordering::Release);
-    }
-}
-
-struct RenderFlowRequestGroups {
-    groups: Box<[UnsafeCell<RequestGroup>]>,
-    active_group_count: AtomicUsize,
-}
-
-unsafe impl Sync for RenderFlowRequestGroups {}
-
-impl RenderFlowRequestGroups {
-    fn new() -> Self {
-        let groups = (0..MAX_RENDER_FLOW_GROUPS)
-            .map(|_| UnsafeCell::new(RequestGroup::new()))
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-
-        Self {
-            groups,
-            active_group_count: AtomicUsize::new(0),
-        }
-    }
-
-    fn active_group_count(&self) -> usize {
-        self.active_group_count.load(Ordering::Acquire)
-    }
-
-    fn prepare_preconsume_groups(&self, group_count: usize) -> FrameResourceResult<()> {
-        if group_count > MAX_RENDER_FLOW_GROUPS {
-            return Err(FrameResourceError::InvalidOperation {
-                operation: "RenderFlowRequestGroups::prepare_preconsume_groups",
-                reason: "requested render-flow group count exceeds the allocator limit",
-            });
-        }
-
-        for group_index in 0..group_count {
-            self.group_mut_by_index(group_index)?.reset_for_preconsume();
-        }
-        self.active_group_count
-            .store(group_count, Ordering::Release);
-        Ok(())
-    }
-
-    fn reset_active_groups(&self) {
-        let group_count = self.active_group_count.swap(0, Ordering::AcqRel);
-        for group_index in 0..group_count {
-            if let Ok(group) = self.group_mut_by_index(group_index) {
-                group.reset_for_preconsume();
-            }
-        }
-    }
-
-    fn reset_consume_cursors(&self) -> FrameResourceResult<()> {
-        for group_index in 0..self.active_group_count() {
-            self.group_mut_by_index(group_index)?.reset_consume_cursor();
-        }
-        Ok(())
-    }
-
-    fn validate_consume_finished(&self) -> FrameResourceResult<()> {
-        for group_index in 0..self.active_group_count() {
-            self.group_by_index(group_index)?
-                .validate_consume_finished()?;
-        }
-        Ok(())
-    }
-
-    fn apply(
-        &self,
-        flow_group: RenderFlowGroup,
-        phase: ResourceAllocatorPhase,
-        request: ResourceRequest,
-    ) -> FrameResourceResult<RequestGroupAction> {
-        self.group_mut(flow_group)?.apply(phase, request)
-    }
-
-    fn current_consume_time(
-        &self,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<RequestTime> {
-        let group = self.group(flow_group)?;
-        let index =
-            group
-                .consume_cursor()
-                .checked_sub(1)
-                .ok_or(FrameResourceError::InvalidState {
-                    reason: "no current consume request time is available for this flow group",
-                })?;
-        let index = u32::try_from(index).map_err(|_| FrameResourceError::InvalidState {
-            reason: "consume request index exceeded u32 range",
-        })?;
-        Ok(RequestTime::new(flow_group, index))
-    }
-
-    fn snapshot(&self) -> Vec<RequestGroup> {
-        let mut groups = Vec::with_capacity(self.active_group_count());
-        for group_index in 0..self.active_group_count() {
-            let Ok(group) = self.group_by_index(group_index) else {
-                continue;
-            };
-            groups.push(group.clone());
-        }
-        groups
-    }
-
-    fn try_group(&self, flow_group: RenderFlowGroup) -> Option<&RequestGroup> {
-        self.validate_active_flow_group(flow_group)
-            .ok()
-            .and_then(|index| self.group_by_index(index).ok())
-    }
-
-    fn group(&self, flow_group: RenderFlowGroup) -> FrameResourceResult<&RequestGroup> {
-        let index = self.validate_active_flow_group(flow_group)?;
-        self.group_by_index(index)
-    }
-
-    fn group_mut(&self, flow_group: RenderFlowGroup) -> FrameResourceResult<&mut RequestGroup> {
-        let index = self.validate_active_flow_group(flow_group)?;
-        self.group_mut_by_index(index)
-    }
-
-    fn group_by_index(&self, group_index: usize) -> FrameResourceResult<&RequestGroup> {
-        let group = self
-            .groups
-            .get(group_index)
-            .ok_or(FrameResourceError::InvalidOperation {
-                operation: "RenderFlowRequestGroups::group_by_index",
-                reason: "render-flow group exceeds the allocator limit",
-            })?;
-        Ok(unsafe { &*group.get() })
-    }
-
-    fn group_mut_by_index(&self, group_index: usize) -> FrameResourceResult<&mut RequestGroup> {
-        let group = self
-            .groups
-            .get(group_index)
-            .ok_or(FrameResourceError::InvalidOperation {
-                operation: "RenderFlowRequestGroups::group_mut_by_index",
-                reason: "render-flow group exceeds the allocator limit",
-            })?;
-        Ok(unsafe { &mut *group.get() })
-    }
-
-    fn validate_active_flow_group(
-        &self,
-        flow_group: RenderFlowGroup,
-    ) -> FrameResourceResult<usize> {
-        if !flow_group.is_valid() {
-            return Err(FrameResourceError::InvalidOperation {
-                operation: "RenderFlowRequestGroups::validate_active_flow_group",
-                reason: "render-flow group exceeds the allocator limit",
-            });
-        }
-
-        let index = flow_group.index();
-        if index >= self.active_group_count() {
-            return Err(FrameResourceError::InvalidOperation {
-                operation: "RenderFlowRequestGroups::validate_active_flow_group",
-                reason: "render-flow group was not prepared for this frame",
-            });
-        }
-        Ok(index)
+impl Default for RenderResourceAllocator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1166,7 +1050,7 @@ impl FrameResourceResolution {
         &self,
         tag: RenderFlowNameTag,
         request_time: RequestTime,
-    ) -> FrameResourceResult<Option<FrameResource>> {
+    ) -> FrameResourceResult<Option<&FrameResource>> {
         let Some(allocation_id) = self.resolved_allocation_id_at(tag, request_time)? else {
             return Ok(None);
         };
@@ -1176,7 +1060,7 @@ impl FrameResourceResolution {
                     reason: "resolved pool allocation is missing",
                 })?;
 
-        Ok(Some(allocation.resource().clone()))
+        Ok(Some(allocation.resource()))
     }
 
     fn resources_resolved(&self) -> bool {
@@ -1224,25 +1108,4 @@ fn is_tag_declared_after_requests(requests: &[ResourceRequest], tag: RenderFlowN
     }
 
     declared
-}
-
-fn encode_phase(phase: ResourceAllocatorPhase) -> u8 {
-    match phase {
-        ResourceAllocatorPhase::Startup => 0,
-        ResourceAllocatorPhase::PreConsume => 1,
-        ResourceAllocatorPhase::Resolve => 2,
-        ResourceAllocatorPhase::Consume => 3,
-        ResourceAllocatorPhase::Cleanup => 4,
-    }
-}
-
-fn decode_phase(phase: u8) -> ResourceAllocatorPhase {
-    match phase {
-        0 => ResourceAllocatorPhase::Startup,
-        1 => ResourceAllocatorPhase::PreConsume,
-        2 => ResourceAllocatorPhase::Resolve,
-        3 => ResourceAllocatorPhase::Consume,
-        4 => ResourceAllocatorPhase::Cleanup,
-        _ => ResourceAllocatorPhase::Startup,
-    }
 }

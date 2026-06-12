@@ -218,6 +218,16 @@ impl Builder {
         *wait_counter += counter;
     }
 
+    /// Creates a counter through the same dispatcher and priority as this builder.
+    pub fn create_counter(&self, name: &'static str) -> Counter {
+        self.dispatcher.create_counter(self.priority, name)
+    }
+
+    /// Returns the dispatcher used by this builder.
+    pub fn dispatcher(&self) -> DispatcherHandle {
+        self.dispatcher.clone()
+    }
+
     /// Ends a no-fence group and makes later work wait for that group.
     ///
     /// Empty accumulators are deliberately not rotated. Rotating an empty

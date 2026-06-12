@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 use leet_jobs2::{JobSystemConfig, LeetJobSystem, Priority};
 
 use super::super::{
-    execute_graph_sequential_gpu_order, FrameResourceAllocator, RenderGraphCache,
-    RenderGraphCameraBuildData, RenderGraphResult, RenderGraphShapeHash,
-    RenderGraphShapeHashBuilder, RenderNodeCommandListUsage, RenderNodeGraphFactory,
-    RenderNodeImpl, RenderNodeImplContext, RenderNodeKind, RenderNodeProcessState,
-    RenderNodeSubtype, ResourceAllocatorPhase,
+    execute_graph_sequential_gpu_order, RenderGraphCache, RenderGraphCameraBuildData,
+    RenderGraphResult, RenderGraphShapeHash, RenderGraphShapeHashBuilder,
+    RenderNodeCommandListUsage, RenderNodeGraphFactory, RenderNodeImpl, RenderNodeImplContext,
+    RenderNodeKind, RenderNodeProcessState, RenderNodeSubtype, RenderResourceAllocator,
+    ResourceAllocatorPhase,
 };
 use leet_jobs2::Builder as RenderJobBuilder;
 
@@ -221,7 +221,7 @@ fn final_merged_graph_remains_executable_after_camera_temp_topology_clears() {
     lookup.entry.post_build_clear();
 
     let final_graph = lookup.entry.final_graph().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();

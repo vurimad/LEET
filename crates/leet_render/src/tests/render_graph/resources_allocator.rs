@@ -1,6 +1,7 @@
 use super::super::resources::{
-    FrameResourceAllocator, FrameResourceDesc, FrameTextureDesc, RenderFlowGroup, RenderFlowName,
-    RenderFlowNameTag, RenderFlowSpace, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
+    FrameResourceDesc, FrameTextureDesc, RenderFlowGroup, RenderFlowName, RenderFlowNameTag,
+    RenderFlowSpace, RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
+    ResourceUsage, MAX_RENDER_FLOW_GROUPS,
 };
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
@@ -45,7 +46,7 @@ fn use_color() -> ResourceRequest {
 
 #[test]
 fn allocator_valid_phase_sequence_records_replays_and_cleans_up() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     assert_eq!(allocator.phase(), ResourceAllocatorPhase::Startup);
     allocator
@@ -78,7 +79,7 @@ fn allocator_valid_phase_sequence_records_replays_and_cleans_up() {
 
 #[test]
 fn allocator_invalid_phase_transitions_fail_loudly() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     assert!(allocator
         .set_phase(ResourceAllocatorPhase::Consume)
@@ -103,7 +104,7 @@ fn allocator_invalid_phase_transitions_fail_loudly() {
 
 #[test]
 fn allocator_rejects_requests_outside_preconsume_and_consume() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     assert!(allocator
         .record_request(flow_group(0), declare_color())
@@ -132,7 +133,7 @@ fn allocator_rejects_requests_outside_preconsume_and_consume() {
 
 #[test]
 fn allocator_cleanup_requires_full_consume_replay() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -171,7 +172,7 @@ fn allocator_cleanup_requires_full_consume_replay() {
 
 #[test]
 fn allocator_retrieval_phase_gate_allows_only_consume() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     assert!(allocator.validate_resource_retrieval_phase().is_err());
     allocator
@@ -194,7 +195,7 @@ fn allocator_retrieval_phase_gate_allows_only_consume() {
 
 #[test]
 fn allocator_clear_all_caches_is_cleanup_only() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     assert!(allocator.clear_all_caches().is_err());
     allocator
@@ -221,7 +222,7 @@ fn allocator_clear_all_caches_is_cleanup_only() {
 
 #[test]
 fn allocator_resolve_validates_recorded_declarations() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -244,7 +245,7 @@ fn allocator_resolve_validates_recorded_declarations() {
 
 #[test]
 fn allocator_next_preconsume_starts_without_previous_frame_requests() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -274,4 +275,39 @@ fn allocator_next_preconsume_starts_without_previous_frame_requests() {
         .unwrap();
 
     assert_eq!(allocator.request_group_count(), 0);
+}
+
+#[test]
+fn allocator_caps_render_flow_groups() {
+    let mut allocator = RenderResourceAllocator::new();
+
+    allocator
+        .set_phase(ResourceAllocatorPhase::PreConsume)
+        .unwrap();
+    allocator
+        .prepare_preconsume_groups(MAX_RENDER_FLOW_GROUPS)
+        .unwrap();
+
+    let last_valid = flow_group((MAX_RENDER_FLOW_GROUPS - 1) as u16);
+    allocator
+        .record_request(last_valid, declare_color())
+        .unwrap();
+    assert!(allocator.request_group(last_valid).is_some());
+
+    let invalid = flow_group(MAX_RENDER_FLOW_GROUPS as u16);
+    assert!(allocator.record_request(invalid, declare_color()).is_err());
+    assert!(allocator.request_group(invalid).is_none());
+}
+
+#[test]
+fn allocator_rejects_oversized_preconsume_group_prepare() {
+    let mut allocator = RenderResourceAllocator::new();
+
+    allocator
+        .set_phase(ResourceAllocatorPhase::PreConsume)
+        .unwrap();
+
+    assert!(allocator
+        .prepare_preconsume_groups(MAX_RENDER_FLOW_GROUPS + 1)
+        .is_err());
 }

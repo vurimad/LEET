@@ -1,5 +1,7 @@
 //! Built render graph cache.
 
+use std::sync::Arc;
+
 use super::{
     AddGraphOptions, CommandListGroupStore, FinalRenderNodeGraph, RenderGraphError,
     RenderGraphResult, RenderNodeGraph, RenderNodeImplStore,
@@ -147,7 +149,7 @@ impl Default for RenderGraphCameraBuildData {
 pub struct RenderGraphCacheEntry {
     shape_hash: RenderGraphShapeHash,
     last_used_frame: u64,
-    final_graph: Option<FinalRenderNodeGraph>,
+    final_graph: Option<Arc<FinalRenderNodeGraph>>,
     camera_build_data: Vec<RenderGraphCameraBuildData>,
     rebuild_generation: u64,
 }
@@ -181,26 +183,29 @@ impl RenderGraphCacheEntry {
         self.rebuild_generation
     }
 
-    pub fn final_graph(&self) -> Option<&FinalRenderNodeGraph> {
-        self.final_graph.as_ref()
+    pub fn final_graph(&self) -> Option<Arc<FinalRenderNodeGraph>> {
+        self.final_graph.as_ref().map(Arc::clone)
     }
 
     pub fn final_graph_mut(&mut self) -> Option<&mut FinalRenderNodeGraph> {
-        self.final_graph.as_mut()
+        self.final_graph.as_mut().and_then(Arc::get_mut)
     }
 
     pub fn set_final_graph(&mut self, graph: FinalRenderNodeGraph) {
-        self.final_graph = Some(graph);
+        self.final_graph = Some(Arc::new(graph));
     }
 
     pub fn ensure_final_graph(&mut self) -> &mut FinalRenderNodeGraph {
-        self.final_graph.get_or_insert_with(|| {
-            FinalRenderNodeGraph::from_parts(
+        if self.final_graph.is_none() {
+            self.final_graph = Some(Arc::new(FinalRenderNodeGraph::from_parts(
                 RenderNodeGraph::new(),
                 RenderNodeImplStore::new(),
                 CommandListGroupStore::new(),
-            )
-        })
+            )));
+        }
+
+        Arc::get_mut(self.final_graph.as_mut().unwrap())
+            .expect("final render graph cannot be mutated after it is shared")
     }
 
     pub fn import_camera_setup_graph_to_final(
@@ -215,15 +220,18 @@ impl RenderGraphCacheEntry {
             });
         };
 
-        let source_graph = camera_data.temporary_graph();
-        let source_command_groups = camera_data.command_groups();
-        let final_graph = self.final_graph.get_or_insert_with(|| {
-            FinalRenderNodeGraph::from_parts(
+        if self.final_graph.is_none() {
+            self.final_graph = Some(Arc::new(FinalRenderNodeGraph::from_parts(
                 RenderNodeGraph::new(),
                 RenderNodeImplStore::new(),
                 CommandListGroupStore::new(),
-            )
-        });
+            )));
+        }
+
+        let source_graph = camera_data.temporary_graph();
+        let source_command_groups = camera_data.command_groups();
+        let final_graph = Arc::get_mut(self.final_graph.as_mut().unwrap())
+            .expect("final render graph cannot be mutated after it is shared");
         let import_map = final_graph.graph_mut().add_graph(
             source_graph,
             AddGraphOptions {
@@ -239,7 +247,9 @@ impl RenderGraphCacheEntry {
     }
 
     pub fn take_final_graph(&mut self) -> Option<FinalRenderNodeGraph> {
-        self.final_graph.take()
+        self.final_graph.take().map(|graph| {
+            Arc::try_unwrap(graph).unwrap_or_else(|_| panic!("final render graph is still shared"))
+        })
     }
 
     pub fn camera_build_data(&self) -> &[RenderGraphCameraBuildData] {

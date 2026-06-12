@@ -5,8 +5,8 @@ use bevy_transform::components::GlobalTransform;
 use crate::{
     FrameCaptureIntent, FrameDebugGraphView, FrameDebugIntent, FrameGpuScene, FrameInput,
     FrameOutput, FramePurpose, FrameRenderingMode, FrameTiming, PreparedFrameCamera,
-    PresentationIntent, RenderCamera, RenderCameraFeatures, RenderCameraId,
-    RenderNodeExecutionMetadata, RenderNodeParameters, RenderViewport,
+    PreparedFrameViews, PresentationIntent, RenderCamera, RenderCameraFeatures, RenderCameraId,
+    RenderNodeExecutionMetadata, RenderNodeParameters, RenderSceneId, RenderViewport,
 };
 
 use super::{
@@ -25,7 +25,8 @@ fn frame(
             wgpu::TextureFormat::Rgba8UnormSrgb,
         ),
         output: FrameOutput::Targetless,
-        cameras,
+        scene_id: RenderSceneId::default(),
+        cameras: PreparedFrameViews::new(cameras),
         scene: FrameGpuScene::empty(),
         timing: FrameTiming {
             frame_index: 7,
@@ -262,12 +263,14 @@ fn render_graph_builder_leaves_are_explicitly_unimplemented_but_setup_import_is_
 
     add_camera_setup_graph_to_frame_graph(lookup.entry, 0).unwrap();
 
-    let final_graph = lookup.entry.final_graph().unwrap().graph();
+    let final_graph_handle = lookup.entry.final_graph().unwrap();
+    let final_graph = final_graph_handle.graph();
     assert_eq!(final_graph.node_count(), 1);
     let node = final_graph
         .node(final_graph.node_ids().next().unwrap())
         .unwrap();
     assert_eq!(node.metadata().camera_index, Some(0));
+    drop(final_graph_handle);
 
     lookup
         .entry

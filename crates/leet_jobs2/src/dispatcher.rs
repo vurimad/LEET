@@ -596,14 +596,19 @@ impl Dispatcher {
 /// The handle is intentionally small: cloning it only clones the `Arc` to the
 /// shared runtime state. It does not clone queues, workers, or any counter.
 #[derive(Clone)]
-pub(crate) struct DispatcherHandle {
+pub struct DispatcherHandle {
     pub(crate) inner: Arc<Dispatcher>,
 }
 
 impl DispatcherHandle {
     /// Creates a public counter handle through the shared runtime.
-    pub(crate) fn create_counter(&self, priority: Priority, name: &'static str) -> Counter {
+    pub fn create_counter(&self, priority: Priority, name: &'static str) -> Counter {
         Counter::from_entry(self.clone(), self.inner.create_counter(priority, name))
+    }
+
+    /// Creates a builder through the shared runtime.
+    pub fn create_builder(&self, priority: Priority) -> Builder {
+        Builder::new(self.clone(), priority)
     }
 
     /// Dispatches a single job through the shared runtime.

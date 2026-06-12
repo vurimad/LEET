@@ -70,6 +70,46 @@ pub struct PreparedFrameCamera {
     pub previous_frame: Option<PreparedCameraHistory>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct PreparedFrameCameraSharedData {}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreparedFrameViews {
+    pub views: Vec<PreparedFrameCamera>,
+    pub shared: PreparedFrameCameraSharedData,
+}
+
+impl PreparedFrameViews {
+    pub fn new(views: Vec<PreparedFrameCamera>) -> Self {
+        Self {
+            views,
+            shared: PreparedFrameCameraSharedData::default(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.views.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.views.is_empty()
+    }
+
+    pub fn as_slice(&self) -> &[PreparedFrameCamera] {
+        &self.views
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, PreparedFrameCamera> {
+        self.views.iter()
+    }
+}
+
+impl From<Vec<PreparedFrameCamera>> for PreparedFrameViews {
+    fn from(views: Vec<PreparedFrameCamera>) -> Self {
+        Self::new(views)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreparedCameraDependency {
     pub camera_id: RenderCameraId,
@@ -287,6 +327,11 @@ impl RenderCameraStorage {
             .unwrap_or_else(|| self.allocate_render_flow_space(management));
 
         let is_new = !self.registry.contains_key(&camera_id);
+        let dependencies = self
+            .registry
+            .remove(&camera_id)
+            .map(|entry| entry.dependencies)
+            .unwrap_or_default();
         let entry = CameraRegistryEntry {
             camera_entity: registration.camera_entity,
             camera: registration.camera,
@@ -297,11 +342,7 @@ impl RenderCameraStorage {
             enabled: true,
             last_update_tick: self.update_tick,
             min_dependency_depth: MAX_CAMERA_DEPENDENCY_DEPTH + 1,
-            dependencies: self
-                .registry
-                .remove(&camera_id)
-                .map(|entry| entry.dependencies)
-                .unwrap_or_default(),
+            dependencies,
             last_prepared: None,
         };
         self.registry.insert(camera_id, entry);
@@ -652,7 +693,7 @@ pub fn sync_render_camera_storage(mut camera_storage: ResMut<RenderCameraStorage
     camera_storage.sync_extracted_cameras();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct CameraRegistryEntry {
     camera_entity: Entity,
     camera: RenderCamera,

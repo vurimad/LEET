@@ -11,6 +11,8 @@ const AUTO_ID_MASK: u32 = (1 << AUTO_ID_BITS) - 1;
 const FNV1A_OFFSET_BASIS: u32 = 0x811c_9dc5;
 const FNV1A_PRIME: u32 = 0x0100_0193;
 
+pub const MAX_RENDER_FLOW_GROUPS: usize = 190;
+
 #[derive(Clone, Copy, Debug)]
 pub struct RenderFlowName {
     hash: u32,
@@ -94,6 +96,14 @@ impl RenderFlowGroup {
 
     pub const fn get(self) -> u16 {
         self.0
+    }
+
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    pub const fn is_valid(self) -> bool {
+        self.index() < MAX_RENDER_FLOW_GROUPS
     }
 }
 

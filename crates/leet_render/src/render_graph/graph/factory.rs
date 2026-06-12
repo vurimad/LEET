@@ -1,5 +1,10 @@
 //! Authoring API for building render node graphs.
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use super::{
     CommandListGroupNode, CommandListGroupStore, NodeGroupId, RenderGraphError, RenderGraphResult,
     RenderNodeCommandListUsage, RenderNodeDebugName, RenderNodeDependencyKind,
@@ -14,6 +19,11 @@ pub struct FinalRenderNodeGraph {
     graph: RenderNodeGraph,
     impl_store: RenderNodeImplStore,
     command_groups: CommandListGroupStore,
+    exclusive_update: AtomicBool,
+}
+
+pub struct FinalRenderNodeGraphExclusiveUpdate {
+    graph: Arc<FinalRenderNodeGraph>,
 }
 
 impl FinalRenderNodeGraph {
@@ -26,6 +36,7 @@ impl FinalRenderNodeGraph {
             graph,
             impl_store,
             command_groups,
+            exclusive_update: AtomicBool::new(false),
         }
     }
 
@@ -68,6 +79,32 @@ impl FinalRenderNodeGraph {
     /// Consumes the package and returns graph topology, implementations, and command groups.
     pub fn into_parts(self) -> (RenderNodeGraph, RenderNodeImplStore, CommandListGroupStore) {
         (self.graph, self.impl_store, self.command_groups)
+    }
+
+    pub fn acquire_exclusive_update_flag(
+        graph: &Arc<Self>,
+    ) -> RenderGraphResult<FinalRenderNodeGraphExclusiveUpdate> {
+        graph
+            .exclusive_update
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map_err(|_| RenderGraphError::InvalidState {
+                reason: "final render graph exclusive update flag is already acquired",
+            })?;
+
+        Ok(FinalRenderNodeGraphExclusiveUpdate {
+            graph: Arc::clone(graph),
+        })
+    }
+
+    fn release_exclusive_update_flag(&self) {
+        let was_acquired = self.exclusive_update.swap(false, Ordering::Release);
+        debug_assert!(was_acquired, "final render graph update flag was not held");
+    }
+}
+
+impl Drop for FinalRenderNodeGraphExclusiveUpdate {
+    fn drop(&mut self) {
+        self.graph.release_exclusive_update_flag();
     }
 }
 
@@ -469,6 +506,7 @@ impl RenderNodeGraphFactory {
             graph: self.graph,
             impl_store: self.impl_store,
             command_groups: self.command_groups,
+            exclusive_update: AtomicBool::new(false),
         })
     }
 

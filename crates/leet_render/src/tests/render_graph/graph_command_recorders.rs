@@ -3,11 +3,11 @@ use leet_jobs2::Builder as RenderJobBuilder;
 use bevy_math::URect;
 
 use super::super::{
-    FrameCommandPassKind, FrameCommandRecorderState, FrameCommandRecorders, FrameResourceAllocator,
-    QueueSyncKind, RenderFlowGroup, RenderGraphError, RenderGraphResult,
-    RenderNodeCommandListUsage, RenderNodeDependencyKind, RenderNodeGraphFactory, RenderNodeImpl,
-    RenderNodeImplContext, RenderNodeImplContextInit, RenderNodeKind, RenderNodeSubtype,
-    RenderQueueKind, ResourceAllocatorPhase, ResourceRequest,
+    FrameCommandPassKind, FrameCommandRecorderState, FrameCommandRecorders, QueueSyncKind,
+    RenderFlowGroup, RenderGraphError, RenderGraphResult, RenderNodeCommandListUsage,
+    RenderNodeDependencyKind, RenderNodeGraphFactory, RenderNodeImpl, RenderNodeImplContext,
+    RenderNodeImplContextInit, RenderNodeKind, RenderNodeSubtype, RenderQueueKind,
+    RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
 };
 
 #[derive(Debug)]
@@ -244,7 +244,7 @@ fn ordered_submission_follows_gpu_dependency_order() {
 
 #[test]
 fn allocator_queue_sync_does_not_own_command_recording_state() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -262,7 +262,8 @@ fn allocator_queue_sync_does_not_own_command_recording_state() {
         rctx.queue_sync(QueueSyncKind::Barrier).unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         requests[0],
         ResourceRequest::QueueSync {
@@ -274,7 +275,7 @@ fn allocator_queue_sync_does_not_own_command_recording_state() {
 
 #[test]
 fn recorder_cleanup_is_explicit_not_context_drop() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let mut recorders = FrameCommandRecorders::prepare(1).unwrap();
     recorders
         .create_own_recorder(flow_group(0), RenderQueueKind::Compute, "compute")

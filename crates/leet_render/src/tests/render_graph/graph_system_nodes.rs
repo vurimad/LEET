@@ -7,12 +7,13 @@ use leet_jobs2::{Builder as RenderJobBuilder, JobSystemConfig, LeetJobSystem, Pr
 use wgpu::{BufferDescriptor, BufferUsages};
 
 use super::super::{
-    process_node, process_node_with_runtime, FrameBufferDesc, FrameCommandRecorders,
-    FrameResourceAllocator, QueueSyncKind, RenderGraphCoreRunner, RenderGraphResult,
-    RenderNodeBeginRenderTargets, RenderNodeDeclareResources, RenderNodeEndFrame,
-    RenderNodeEndRender, RenderNodeEndRenderTargets, RenderNodeGraphFactory, RenderNodeKind,
-    RenderNodeResourceDeclaration, RenderNodeStartRender, RenderNodeSubtype, RenderNodeSynchronize,
-    ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
+    execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order, process_node,
+    process_node_with_runtime, FrameBufferDesc, FrameCommandRecorders, QueueSyncKind,
+    RenderGraphResult, RenderNodeBeginRenderTargets, RenderNodeDeclareResources,
+    RenderNodeEndFrame, RenderNodeEndRender, RenderNodeEndRenderTargets, RenderNodeGraphFactory,
+    RenderNodeKind, RenderNodeResourceDeclaration, RenderNodeStartRender, RenderNodeSubtype,
+    RenderNodeSynchronize, RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
+    ResourceUsage,
 };
 
 struct JobHarness {
@@ -49,7 +50,7 @@ fn test_buffer_desc(label: &'static str) -> FrameBufferDesc {
     })
 }
 
-fn transition_to(allocator: &mut FrameResourceAllocator, phase: ResourceAllocatorPhase) {
+fn transition_to(allocator: &mut RenderResourceAllocator, phase: ResourceAllocatorPhase) {
     match phase {
         ResourceAllocatorPhase::Startup => {}
         ResourceAllocatorPhase::PreConsume => {
@@ -105,22 +106,43 @@ fn lifecycle_nodes_participate_in_dependencies_like_normal_nodes() {
     let built = factory.finish().unwrap();
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
-    let mut runner = RenderGraphCoreRunner::new();
-
-    let report = runner.execute_built_graph(&built, &mut builder).unwrap();
+    let mut state = super::super::RenderNodeProcessState::new();
+    let mut allocator = RenderResourceAllocator::new();
+    transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
+    let preconsume_reports = execute_graph_sequential_gpu_order(
+        built.graph(),
+        built.impl_store(),
+        built.command_group_store(),
+        &mut state,
+        &mut allocator,
+        &mut builder,
+    )
+    .unwrap();
+    allocator
+        .set_phase(ResourceAllocatorPhase::Resolve)
+        .unwrap();
+    allocator
+        .set_phase(ResourceAllocatorPhase::Consume)
+        .unwrap();
+    let report = execute_graph_dependency_counter_consume(
+        built.graph(),
+        built.impl_store(),
+        built.command_group_store(),
+        &mut state,
+        &mut allocator,
+        &mut builder,
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
-        report
-            .preconsume_reports
+        preconsume_reports
             .iter()
             .map(|report| report.node)
             .collect::<Vec<_>>(),
         vec![start, end]
     );
-    assert_eq!(
-        report.consume_report.ready_batches,
-        vec![vec![start], vec![end]]
-    );
+    assert_eq!(report.ready_batches, vec![vec![start], vec![end]]);
     assert_eq!(start_counter.load(Ordering::Relaxed), 1);
     assert_eq!(end_counter.load(Ordering::Relaxed), 1);
 }
@@ -144,7 +166,7 @@ fn declaration_system_nodes_use_no_command_list_and_record_declarations() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -161,10 +183,8 @@ fn declaration_system_nodes_use_no_command_list_and_record_declarations() {
     )
     .unwrap();
 
-    let requests = allocator
-        .request_group(report.flow_group)
-        .unwrap()
-        .requests();
+    let request_group = allocator.request_group(report.flow_group).unwrap();
+    let requests = request_group.requests();
     assert_eq!(
         report.command_list_usage,
         super::super::RenderNodeCommandListUsage::None
@@ -187,7 +207,7 @@ fn sync_node_records_allocator_and_command_sync() {
     let built = factory.finish().unwrap();
     let jobs = JobHarness::new();
     let mut state = super::super::RenderNodeProcessState::new();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let mut preconsume_builder = jobs.builder();
 
@@ -261,7 +281,7 @@ fn end_frame_lifecycle_node_does_not_run_allocator_cleanup() {
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
     let mut state = super::super::RenderNodeProcessState::new();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::Consume);
 
     process_node(
@@ -313,7 +333,7 @@ fn render_target_markers_record_begin_and_end_use_requests() -> RenderGraphResul
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
     let mut state = super::super::RenderNodeProcessState::new();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
 
     let reports = super::super::execute_graph_sequential_gpu_order(

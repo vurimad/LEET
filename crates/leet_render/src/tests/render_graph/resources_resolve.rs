@@ -1,7 +1,7 @@
 use super::super::resources::{
-    ExternalFrameResourceId, FrameBufferDesc, FrameResourceAllocator, FrameResourceDesc,
-    FrameResourceOwnership, FrameTextureDesc, ImportedFrameResource, RenderFlowGroup,
-    RenderFlowName, RenderFlowNameTag, RenderFlowSpace, ResourceAllocatorPhase, ResourceRequest,
+    ExternalFrameResourceId, FrameBufferDesc, FrameResourceDesc, FrameResourceOwnership,
+    FrameTextureDesc, ImportedFrameResource, RenderFlowGroup, RenderFlowName, RenderFlowNameTag,
+    RenderFlowSpace, RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
     ResourceUsage,
 };
 use crate::{RenderAppPlugin, RenderDevice};
@@ -95,7 +95,7 @@ fn create_external_buffer(render_device: &RenderDevice, desc: &FrameBufferDesc) 
     render_device.0.create_buffer(&descriptor)
 }
 
-fn preconsume_requests(allocator: &mut FrameResourceAllocator, requests: &[ResourceRequest]) {
+fn preconsume_requests(allocator: &mut RenderResourceAllocator, requests: &[ResourceRequest]) {
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -109,7 +109,7 @@ fn preconsume_requests(allocator: &mut FrameResourceAllocator, requests: &[Resou
         .unwrap();
 }
 
-fn replay_requests(allocator: &mut FrameResourceAllocator, requests: &[ResourceRequest]) {
+fn replay_requests(allocator: &mut RenderResourceAllocator, requests: &[ResourceRequest]) {
     allocator
         .set_phase(ResourceAllocatorPhase::Consume)
         .unwrap();
@@ -122,7 +122,7 @@ fn replay_requests(allocator: &mut FrameResourceAllocator, requests: &[ResourceR
 
 #[test]
 fn getters_fail_before_materialized_resolve() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let requests = vec![
         declare_texture("color", 64),
         use_begin("color"),
@@ -137,13 +137,13 @@ fn getters_fail_before_materialized_resolve() {
         .record_request(flow_group(0), requests[0].clone())
         .unwrap();
 
-    assert!(allocator.get_texture(tag("color")).is_err());
+    assert!(allocator.get_texture(tag("color"), flow_group(0)).is_err());
 }
 
 #[test]
 fn resolve_materializes_owned_texture_and_getter_returns_it() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let requests = vec![
         declare_texture("color", 64),
         use_begin("color"),
@@ -154,6 +154,7 @@ fn resolve_materializes_owned_texture_and_getter_returns_it() {
     allocator.resolve_frame_resources(&render_device).unwrap();
 
     assert!(allocator.resources_resolved());
+    assert!(allocator.frame_resource_resolution().is_ok());
     assert_eq!(allocator.resource_pool().allocations().len(), 1);
 
     allocator
@@ -163,15 +164,18 @@ fn resolve_materializes_owned_texture_and_getter_returns_it() {
         .record_request(flow_group(0), requests[0].clone())
         .unwrap();
 
-    assert!(allocator.get_texture(tag("color")).is_ok());
-    assert!(allocator.try_get_texture(tag("color")).unwrap().is_some());
-    assert!(allocator.get_buffer(tag("color")).is_err());
+    assert!(allocator.get_texture(tag("color"), flow_group(0)).is_ok());
+    assert!(allocator
+        .try_get_texture(tag("color"), flow_group(0))
+        .unwrap()
+        .is_some());
+    assert!(allocator.get_buffer(tag("color"), flow_group(0)).is_err());
 }
 
 #[test]
 fn resolve_materializes_owned_buffer_and_getter_returns_it() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let requests = vec![
         declare_buffer("lights", 4096),
         use_begin("lights"),
@@ -187,15 +191,18 @@ fn resolve_materializes_owned_buffer_and_getter_returns_it() {
         .record_request(flow_group(0), requests[0].clone())
         .unwrap();
 
-    assert!(allocator.get_buffer(tag("lights")).is_ok());
-    assert!(allocator.try_get_buffer(tag("lights")).unwrap().is_some());
-    assert!(allocator.get_texture(tag("lights")).is_err());
+    assert!(allocator.get_buffer(tag("lights"), flow_group(0)).is_ok());
+    assert!(allocator
+        .try_get_buffer(tag("lights"), flow_group(0))
+        .unwrap()
+        .is_some());
+    assert!(allocator.get_texture(tag("lights"), flow_group(0)).is_err());
 }
 
 #[test]
 fn declared_but_unused_resource_resolves_without_allocation() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let requests = vec![declare_texture("optional", 64)];
 
     preconsume_requests(&mut allocator, &requests);
@@ -210,16 +217,18 @@ fn declared_but_unused_resource_resolves_without_allocation() {
         .unwrap();
 
     assert!(allocator
-        .try_get_texture(tag("optional"))
+        .try_get_texture(tag("optional"), flow_group(0))
         .unwrap()
         .is_none());
-    assert!(allocator.get_texture(tag("optional")).is_err());
+    assert!(allocator
+        .get_texture(tag("optional"), flow_group(0))
+        .is_err());
 }
 
 #[test]
 fn imported_texture_attaches_registered_external_resource() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let external_id = ExternalFrameResourceId::new(10);
     let desc = texture_desc(64);
     let requests = vec![ResourceRequest::Import {
@@ -234,11 +243,14 @@ fn imported_texture_attaches_registered_external_resource() {
         .unwrap();
     allocator.resolve_frame_resources(&render_device).unwrap();
 
-    let allocation = allocator.resource_pool().allocations().first().unwrap();
-    assert_eq!(allocation.ownership(), FrameResourceOwnership::Imported);
+    {
+        let resource_pool = allocator.resource_pool();
+        let allocation = resource_pool.allocations().first().unwrap();
+        assert_eq!(allocation.ownership(), FrameResourceOwnership::Imported);
+    }
 
     replay_requests(&mut allocator, &requests);
-    assert!(allocator.get_texture(tag("history")).is_ok());
+    assert!(allocator.get_texture(tag("history"), flow_group(0)).is_ok());
 
     allocator
         .set_phase(ResourceAllocatorPhase::Cleanup)
@@ -249,7 +261,7 @@ fn imported_texture_attaches_registered_external_resource() {
 #[test]
 fn imported_buffer_attaches_registered_external_resource() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let external_id = ExternalFrameResourceId::new(11);
     let desc = buffer_desc(2048);
     let requests = vec![ResourceRequest::Import {
@@ -265,13 +277,13 @@ fn imported_buffer_attaches_registered_external_resource() {
     allocator.resolve_frame_resources(&render_device).unwrap();
     replay_requests(&mut allocator, &requests);
 
-    assert!(allocator.get_buffer(tag("readback")).is_ok());
+    assert!(allocator.get_buffer(tag("readback"), flow_group(0)).is_ok());
 }
 
 #[test]
 fn resolve_fails_when_registered_external_descriptor_mismatches_request() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let external_id = ExternalFrameResourceId::new(12);
     let requested = texture_desc(64);
     let registered = texture_desc(128);
@@ -292,7 +304,7 @@ fn resolve_fails_when_registered_external_descriptor_mismatches_request() {
 #[test]
 fn getter_after_swap_uses_current_consume_time() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let requests = vec![
         declare_texture("a", 64),
         declare_texture("b", 64),
@@ -317,8 +329,14 @@ fn getter_after_swap_uses_current_consume_time() {
             .record_request(flow_group(0), request.clone())
             .unwrap();
     }
-    let a_before = allocator.resolved_allocation_id(tag("a")).unwrap().unwrap();
-    let b_before = allocator.resolved_allocation_id(tag("b")).unwrap().unwrap();
+    let a_before = allocator
+        .resolved_allocation_id(tag("a"), flow_group(0))
+        .unwrap()
+        .unwrap();
+    let b_before = allocator
+        .resolved_allocation_id(tag("b"), flow_group(0))
+        .unwrap()
+        .unwrap();
     assert_ne!(a_before, b_before);
 
     allocator
@@ -326,11 +344,15 @@ fn getter_after_swap_uses_current_consume_time() {
         .unwrap();
 
     assert_eq!(
-        allocator.resolved_allocation_id(tag("a")).unwrap(),
+        allocator
+            .resolved_allocation_id(tag("a"), flow_group(0))
+            .unwrap(),
         Some(b_before)
     );
     assert_eq!(
-        allocator.resolved_allocation_id(tag("b")).unwrap(),
+        allocator
+            .resolved_allocation_id(tag("b"), flow_group(0))
+            .unwrap(),
         Some(a_before)
     );
 }

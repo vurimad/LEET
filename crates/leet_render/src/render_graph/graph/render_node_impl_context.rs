@@ -1,6 +1,6 @@
 //! Render node implementation context.
 //!
-//! This is the node-facing layer above `FrameResourceAllocator`. It owns the
+//! This is the node-facing layer above `RenderResourceAllocator`. It owns the
 //! context-sensitive choices around which flow group requests are recorded into,
 //! which flow space named resources belong to, and whether the node is
 //! unique/global or camera/view scoped.
@@ -9,14 +9,33 @@
 //! the same allocator request stream during pre-consume and replay the same
 //! stream during consume.
 
+use std::sync::Arc;
+
 use super::super::resources::{
-    ExternalFrameResourceId, FrameBufferDesc, FrameBufferResource, FrameResourceAllocator,
-    FrameResourceDesc, FrameResourceResult, FrameTextureDesc, FrameTextureResource,
-    ImportedFrameResource, QueueSyncKind, RenderFlowGroup, RenderFlowName, RenderFlowNameTag,
-    RenderFlowSpace, RenderQueueKind, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
+    ExternalFrameResourceId, FrameBufferDesc, FrameBufferResource, FrameResourceDesc,
+    FrameResourceResult, FrameTextureDesc, FrameTextureResource, ImportedFrameResource,
+    QueueSyncKind, RenderFlowGroup, RenderFlowName, RenderFlowNameTag, RenderFlowSpace,
+    RenderQueueKind, RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
+    ResourceUsage,
 };
 use super::{RenderGraphError, RenderGraphResult};
+use crate::{FrameInput, PreparedFrameSceneData};
 use bevy_math::URect;
+
+#[derive(Clone, Copy)]
+pub struct RenderNodeFrameContextInit<'a> {
+    pub frame: &'a FrameInput,
+    pub dispatcher_thread_index: u32,
+}
+
+impl<'a> RenderNodeFrameContextInit<'a> {
+    pub fn new(frame: &'a FrameInput, dispatcher_thread_index: u32) -> Self {
+        Self {
+            frame,
+            dispatcher_thread_index,
+        }
+    }
+}
 
 /// Camera access permission granted by the node context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,7 +204,7 @@ pub enum RenderNodeImplKind {
 /// directly. The context records each request with its configured flow group and
 /// creates tags using the correct flow-space rule for the current node.
 pub struct RenderNodeImplContext<'a> {
-    allocator: &'a mut FrameResourceAllocator,
+    allocator: &'a mut RenderResourceAllocator,
     frame_runtime: Option<&'a mut dyn RenderNodeFrameRuntime>,
     initialized: bool,
     flow_group: RenderFlowGroup,
@@ -193,6 +212,7 @@ pub struct RenderNodeImplContext<'a> {
     camera_index: Option<u32>,
     node_kind: RenderNodeImplKind,
     dispatcher_thread_index: u32,
+    frame_scene_data: Option<Arc<PreparedFrameSceneData>>,
 }
 
 impl<'a> RenderNodeImplContext<'a> {
@@ -201,7 +221,10 @@ impl<'a> RenderNodeImplContext<'a> {
     /// This does not reset allocator state or change allocator phase. The caller
     /// is responsible for creating contexts at the correct point in pre-consume
     /// or consume execution.
-    pub fn new(allocator: &'a mut FrameResourceAllocator, init: RenderNodeImplContextInit) -> Self {
+    pub fn new(
+        allocator: &'a mut RenderResourceAllocator,
+        init: RenderNodeImplContextInit,
+    ) -> Self {
         Self {
             allocator,
             frame_runtime: None,
@@ -211,12 +234,13 @@ impl<'a> RenderNodeImplContext<'a> {
             camera_index: init.camera_index,
             node_kind: init.node_kind,
             dispatcher_thread_index: init.dispatcher_thread_index,
+            frame_scene_data: None,
         }
     }
 
     /// Creates a context around a frame allocator and frame runtime hooks.
     pub fn new_with_runtime(
-        allocator: &'a mut FrameResourceAllocator,
+        allocator: &'a mut RenderResourceAllocator,
         frame_runtime: &'a mut dyn RenderNodeFrameRuntime,
         init: RenderNodeImplContextInit,
     ) -> Self {
@@ -229,11 +253,12 @@ impl<'a> RenderNodeImplContext<'a> {
             camera_index: init.camera_index,
             node_kind: init.node_kind,
             dispatcher_thread_index: init.dispatcher_thread_index,
+            frame_scene_data: None,
         }
     }
 
     /// Creates a diagnostic context that has not been set up for node execution.
-    pub fn uninitialized(allocator: &'a mut FrameResourceAllocator) -> Self {
+    pub fn uninitialized(allocator: &'a mut RenderResourceAllocator) -> Self {
         Self {
             allocator,
             frame_runtime: None,
@@ -243,6 +268,7 @@ impl<'a> RenderNodeImplContext<'a> {
             camera_index: None,
             node_kind: RenderNodeImplKind::Unique,
             dispatcher_thread_index: u32::MAX,
+            frame_scene_data: None,
         }
     }
 
@@ -252,7 +278,7 @@ impl<'a> RenderNodeImplContext<'a> {
     /// the behavior expected for unique/global nodes, where logical resource
     /// names use shared flow space.
     pub fn unique_node(
-        allocator: &'a mut FrameResourceAllocator,
+        allocator: &'a mut RenderResourceAllocator,
         flow_group: RenderFlowGroup,
     ) -> Self {
         Self::new(
@@ -267,7 +293,7 @@ impl<'a> RenderNodeImplContext<'a> {
     /// `flow_space`, so two cameras can both use names like `"scene_color"` while
     /// remaining distinct logical resources.
     pub fn camera_node(
-        allocator: &'a mut FrameResourceAllocator,
+        allocator: &'a mut RenderResourceAllocator,
         flow_group: RenderFlowGroup,
         flow_space: RenderFlowSpace,
     ) -> Self {
@@ -275,6 +301,19 @@ impl<'a> RenderNodeImplContext<'a> {
             allocator,
             RenderNodeImplContextInit::camera_node(flow_group, flow_space),
         )
+    }
+
+    pub fn with_frame_scene_data(mut self, frame_scene_data: Arc<PreparedFrameSceneData>) -> Self {
+        self.frame_scene_data = Some(frame_scene_data);
+        self
+    }
+
+    pub fn frame_scene_data(&self) -> RenderGraphResult<&PreparedFrameSceneData> {
+        self.frame_scene_data
+            .as_deref()
+            .ok_or(RenderGraphError::InvalidState {
+                reason: "prepared frame scene data is not available",
+            })
     }
 
     /// Returns the allocator flow group this context records into.
@@ -393,7 +432,7 @@ impl<'a> RenderNodeImplContext<'a> {
     /// The context does not expose mutable allocator access. Node code should use
     /// the context methods so requests keep the correct flow group and flow-space
     /// semantics.
-    pub fn resource_allocator(&self) -> &FrameResourceAllocator {
+    pub fn resource_allocator(&self) -> &RenderResourceAllocator {
         self.allocator
     }
 
@@ -680,11 +719,8 @@ impl<'a> RenderNodeImplContext<'a> {
     /// timeline-aware: after swaps or external swaps, the same tag may resolve to
     /// a different allocation at different consume positions. Errors if the tag is
     /// missing, unresolved, or currently a buffer.
-    pub fn get_texture(
-        &self,
-        tag: RenderFlowNameTag,
-    ) -> FrameResourceResult<&FrameTextureResource> {
-        self.allocator.get_texture(tag)
+    pub fn get_texture(&self, tag: RenderFlowNameTag) -> FrameResourceResult<FrameTextureResource> {
+        self.allocator.get_texture(tag, self.flow_group)
     }
 
     /// Optionally returns the resolved texture for `tag`.
@@ -695,8 +731,8 @@ impl<'a> RenderNodeImplContext<'a> {
     pub fn try_get_texture(
         &self,
         tag: RenderFlowNameTag,
-    ) -> FrameResourceResult<Option<&FrameTextureResource>> {
-        self.allocator.try_get_texture(tag)
+    ) -> FrameResourceResult<Option<FrameTextureResource>> {
+        self.allocator.try_get_texture(tag, self.flow_group)
     }
 
     /// Returns the resolved buffer for `tag` at the current consume request time.
@@ -704,8 +740,8 @@ impl<'a> RenderNodeImplContext<'a> {
     /// This mirrors `get_texture` for buffer resources. It is phase-gated,
     /// timeline-aware, and errors if the tag is missing, unresolved, or currently
     /// a texture.
-    pub fn get_buffer(&self, tag: RenderFlowNameTag) -> FrameResourceResult<&FrameBufferResource> {
-        self.allocator.get_buffer(tag)
+    pub fn get_buffer(&self, tag: RenderFlowNameTag) -> FrameResourceResult<FrameBufferResource> {
+        self.allocator.get_buffer(tag, self.flow_group)
     }
 
     /// Optionally returns the resolved buffer for `tag`.
@@ -715,8 +751,8 @@ impl<'a> RenderNodeImplContext<'a> {
     pub fn try_get_buffer(
         &self,
         tag: RenderFlowNameTag,
-    ) -> FrameResourceResult<Option<&FrameBufferResource>> {
-        self.allocator.try_get_buffer(tag)
+    ) -> FrameResourceResult<Option<FrameBufferResource>> {
+        self.allocator.try_get_buffer(tag, self.flow_group)
     }
 
     fn record(&mut self, request: ResourceRequest) -> FrameResourceResult<()> {

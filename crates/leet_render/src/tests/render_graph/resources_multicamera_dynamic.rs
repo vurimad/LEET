@@ -1,7 +1,7 @@
 use super::super::{
-    ExternalFrameResourceId, FrameResourceAllocator, FrameResourceDesc, FrameResourceOwnership,
-    FrameResourceResult, FrameTextureDesc, ImportedFrameResource, RenderFlowGroup, RenderFlowName,
-    RenderFlowNameTag, RenderFlowSpace, RenderNodeImplContext, ResourceAllocatorPhase,
+    ExternalFrameResourceId, FrameResourceDesc, FrameResourceOwnership, FrameResourceResult,
+    FrameTextureDesc, ImportedFrameResource, RenderFlowGroup, RenderFlowName, RenderFlowNameTag,
+    RenderFlowSpace, RenderNodeImplContext, RenderResourceAllocator, ResourceAllocatorPhase,
     ResourceRequest, ResourceUsage,
 };
 use crate::{RenderAppPlugin, RenderDevice};
@@ -90,7 +90,7 @@ fn create_external_texture(
 }
 
 fn preconsume_and_resolve(
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     requests: &[ResourceRequest],
 ) -> FrameResourceResult<()> {
     allocator.set_phase(ResourceAllocatorPhase::PreConsume)?;
@@ -101,7 +101,7 @@ fn preconsume_and_resolve(
 }
 
 fn materialize_and_cleanup_frame(
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     render_device: &RenderDevice,
     requests: &[ResourceRequest],
 ) -> FrameResourceResult<()> {
@@ -115,7 +115,7 @@ fn materialize_and_cleanup_frame(
 }
 
 fn empty_frame(
-    allocator: &mut FrameResourceAllocator,
+    allocator: &mut RenderResourceAllocator,
     render_device: &RenderDevice,
 ) -> FrameResourceResult<()> {
     if allocator.phase() == ResourceAllocatorPhase::Cleanup {
@@ -126,7 +126,7 @@ fn empty_frame(
 
 #[test]
 fn camera_contexts_with_same_resource_name_create_distinct_logical_tags() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let main = RenderNodeImplContext::camera_node(&mut allocator, flow_group(0), camera_space(1))
         .rt_name_tag("scene_color");
     let mirror = RenderNodeImplContext::camera_node(&mut allocator, flow_group(0), camera_space(2))
@@ -149,7 +149,7 @@ fn simultaneous_main_and_mirror_targets_do_not_share_allocations() {
         use_end(main),
         use_end(mirror),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     preconsume_and_resolve(&mut allocator, &requests).unwrap();
 
@@ -189,7 +189,7 @@ fn compatible_non_overlapping_camera_targets_reuse_same_frame_allocation() {
         use_end(mirror),
         free(mirror),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     preconsume_and_resolve(&mut allocator, &requests).unwrap();
 
@@ -229,7 +229,7 @@ fn dynamic_resolution_growth_beyond_cached_capacity_allocates_larger_texture() {
         use_begin(tag),
         use_end(tag),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     materialize_and_cleanup_frame(&mut allocator, &render_device, &small_frame).unwrap();
     let cached_small = allocator.resource_pool().allocations()[0].id();
@@ -247,16 +247,11 @@ fn dynamic_resolution_growth_beyond_cached_capacity_allocates_larger_texture() {
         .find(|request| request.tag() == tag)
         .unwrap()
         .id();
-    let large_assignment = allocator
-        .pool_plan()
-        .unwrap()
-        .assignment_for_request(request_id)
-        .unwrap();
+    let pool_plan = allocator.pool_plan().unwrap();
+    let large_assignment = pool_plan.assignment_for_request(request_id).unwrap();
 
     assert_ne!(large_assignment.allocation_id(), cached_small);
-    assert!(allocator
-        .pool_plan()
-        .unwrap()
+    assert!(pool_plan
         .rejections()
         .iter()
         .any(|rejection| rejection.candidate_allocation_id() == cached_small));
@@ -276,7 +271,7 @@ fn dynamic_resolution_growth_within_logical_max_still_respects_concrete_cache_si
         use_begin(tag),
         use_end(tag),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     materialize_and_cleanup_frame(&mut allocator, &render_device, &small_frame).unwrap();
     let cached_small = allocator.resource_pool().allocations()[0].id();
@@ -294,11 +289,8 @@ fn dynamic_resolution_growth_within_logical_max_still_respects_concrete_cache_si
         .find(|request| request.tag() == tag)
         .unwrap()
         .id();
-    let larger_assignment = allocator
-        .pool_plan()
-        .unwrap()
-        .assignment_for_request(request_id)
-        .unwrap();
+    let pool_plan = allocator.pool_plan().unwrap();
+    let larger_assignment = pool_plan.assignment_for_request(request_id).unwrap();
 
     assert_ne!(larger_assignment.allocation_id(), cached_small);
 }
@@ -317,7 +309,7 @@ fn dynamic_resolution_shrink_reuses_larger_cached_capacity_until_eviction() {
         use_begin(tag),
         use_end(tag),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     materialize_and_cleanup_frame(&mut allocator, &render_device, &large_frame).unwrap();
     let cached_large = allocator.resource_pool().allocations()[0].id();
@@ -355,7 +347,7 @@ fn repeated_dynamic_resolution_shrink_evicts_overcapacity_cache_even_when_used()
         use_end(tag),
     ];
     let small_frame = vec![declare(tag, texture_desc(64)), use_begin(tag), use_end(tag)];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     materialize_and_cleanup_frame(&mut allocator, &render_device, &large_frame).unwrap();
     assert_eq!(allocator.resource_pool().allocations().len(), 1);
@@ -384,7 +376,7 @@ fn imported_camera_target_is_tracked_but_not_recycled() {
         use_begin(tag),
         use_end(tag),
     ];
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     preconsume_and_resolve(&mut allocator, &requests).unwrap();
     let (texture, view) = create_external_texture(&render_device, &desc);

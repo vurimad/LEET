@@ -1,4 +1,4 @@
-//! Render-frame job context, equivalent to RED's `SRenderFrameContext`.
+//! Render-frame job context.
 
 use leet_jobs2::{Builder, RunContext};
 

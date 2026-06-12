@@ -4,9 +4,8 @@ use bevy_math::{URect, UVec2};
 
 /// Renderer-facing viewport for one concrete frame output.
 ///
-/// This is the LEET equivalent of the RED render-frame `RenderViewport` lookup:
-/// it describes the renderable target area and exposes the texture view that
-/// the graph will render into. Output lifetime and presentation live on
+/// Describes the renderable target area and exposes the texture view that the
+/// graph will render into. Output lifetime and presentation live on
 /// `FrameInput`, not here.
 pub struct RenderViewport {
     extent: UVec2,

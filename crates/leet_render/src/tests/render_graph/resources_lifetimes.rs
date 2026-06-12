@@ -1,9 +1,8 @@
 use super::super::resources::{
-    AllocationRequestSource, ExternalFrameResourceId, FrameLifetimeSolution,
-    FrameResourceAllocator, FrameResourceDesc, FrameTextureDesc, ImportedFrameResource,
-    QueueSyncKind, RenderFlowGroup, RenderFlowName, RenderFlowNameTag, RenderFlowSpace,
-    RequestGroup, RequestTime, ResourceAllocatorPhase, ResourceRequest, ResourceUsage,
-    TagLifetimeEventKind,
+    AllocationRequestSource, ExternalFrameResourceId, FrameLifetimeSolution, FrameResourceDesc,
+    FrameTextureDesc, ImportedFrameResource, QueueSyncKind, RenderFlowGroup, RenderFlowName,
+    RenderFlowNameTag, RenderFlowSpace, RenderResourceAllocator, RequestGroup, RequestTime,
+    ResourceAllocatorPhase, ResourceRequest, ResourceUsage, TagLifetimeEventKind,
 };
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
@@ -320,7 +319,7 @@ fn swap_requires_descriptor_compatibility() {
 
 #[test]
 fn allocator_resolve_stores_lifetime_solution() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)

@@ -4,10 +4,10 @@ use leet_jobs2::{JobSystemConfig, LeetJobSystem, Priority};
 
 use super::super::{
     execute_graph_dependency_counter_consume, execute_graph_sequential_gpu_order, process_node,
-    FrameCommandRecorders, FrameResourceAllocator, RenderGlobalBindingMask,
-    RenderGraphDependencyCounters, RenderGraphError, RenderGraphResult, RenderNodeCommandListUsage,
-    RenderNodeDependencyKind, RenderNodeGraphFactory, RenderNodeImpl, RenderNodeImplContext,
-    RenderNodeKind, RenderNodeProcessState, RenderNodeSubtype, RenderQueueKind,
+    FrameCommandRecorders, RenderGlobalBindingMask, RenderGraphDependencyCounters,
+    RenderGraphError, RenderGraphResult, RenderNodeCommandListUsage, RenderNodeDependencyKind,
+    RenderNodeGraphFactory, RenderNodeImpl, RenderNodeImplContext, RenderNodeKind,
+    RenderNodeProcessState, RenderNodeSubtype, RenderQueueKind, RenderResourceAllocator,
     ResourceAllocatorPhase, ResourceRequest,
 };
 use leet_jobs2::Builder as RenderJobBuilder;
@@ -139,7 +139,7 @@ impl Drop for JobHarness {
     }
 }
 
-fn transition_to(allocator: &mut FrameResourceAllocator, phase: ResourceAllocatorPhase) {
+fn transition_to(allocator: &mut RenderResourceAllocator, phase: ResourceAllocatorPhase) {
     match phase {
         ResourceAllocatorPhase::Startup => {}
         ResourceAllocatorPhase::PreConsume => {
@@ -197,7 +197,7 @@ fn process_wrapper_calls_execute_once() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -245,7 +245,7 @@ fn sequential_gpu_execution_uses_process_wrapper_order() {
         .link_nodes(first, second, RenderNodeDependencyKind::Gpu)
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -290,7 +290,7 @@ fn begin_node_state_resets_for_every_node() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -347,7 +347,7 @@ fn process_wrapper_resets_current_node_after_execute_error() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -391,7 +391,7 @@ fn epilogue_runs_for_command_list_nodes_during_consume() {
     let jobs = JobHarness::new();
     let mut state = RenderNodeProcessState::new();
 
-    let mut preconsume_allocator = FrameResourceAllocator::new();
+    let mut preconsume_allocator = RenderResourceAllocator::new();
     transition_to(
         &mut preconsume_allocator,
         ResourceAllocatorPhase::PreConsume,
@@ -452,7 +452,7 @@ fn command_list_usage_none_nodes_still_execute_during_preconsume() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -494,7 +494,7 @@ fn consume_only_side_effects_can_be_guarded_by_context_phase() {
     let jobs = JobHarness::new();
     let mut state = RenderNodeProcessState::new();
 
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let mut preconsume_builder = jobs.builder();
     process_node(
@@ -562,7 +562,7 @@ fn command_list_group_processes_subnodes_inside_queue_scope() {
         .unwrap();
     factory.end_command_list_group().unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::PreConsume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();
@@ -578,10 +578,8 @@ fn command_list_group_processes_subnodes_inside_queue_scope() {
         &mut builder,
     )
     .unwrap();
-    let requests = allocator
-        .request_group(report.flow_group)
-        .unwrap()
-        .requests();
+    let request_group = allocator.request_group(report.flow_group).unwrap();
+    let requests = request_group.requests();
 
     assert_eq!(log.lock().unwrap().as_slice(), &["first", "second"]);
     assert_eq!(report.executed_impls, 2);
@@ -800,7 +798,7 @@ fn dependency_counter_consume_passes_frame_runtime_and_worker_index() {
         )
         .unwrap();
     let built = factory.finish().unwrap();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     transition_to(&mut allocator, ResourceAllocatorPhase::Consume);
     let jobs = JobHarness::new();
     let mut builder = jobs.builder();

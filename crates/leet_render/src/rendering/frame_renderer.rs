@@ -4,8 +4,9 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    PreparedFrameCamera, RenderGraphCache, RenderGraphCacheEntry, RenderGraphShapeHash,
-    RenderGraphShapeHashBuilder,
+    PersistentRenderSceneDataRegistry, PreparedFrameCamera, RenderGraphCache,
+    RenderGraphCacheEntry, RenderGraphExecutionInput, RenderGraphExecutor, RenderGraphShapeHash,
+    RenderGraphShapeHashBuilder, RenderResourceAllocator,
 };
 
 use super::{
@@ -29,6 +30,9 @@ impl RenderProfilerScope {
 #[derive(Default)]
 pub struct FrameRenderer {
     graph_cache: RenderGraphCache,
+    resource_allocator: RenderResourceAllocator,
+    scene_registry: PersistentRenderSceneDataRegistry,
+    graph_executor: RenderGraphExecutor,
 }
 
 #[derive(Clone)]
@@ -270,11 +274,35 @@ impl FrameRenderer {
         &mut self.graph_cache
     }
 
+    pub fn resource_allocator(&self) -> &RenderResourceAllocator {
+        &self.resource_allocator
+    }
+
+    pub fn resource_allocator_mut(&mut self) -> &mut RenderResourceAllocator {
+        &mut self.resource_allocator
+    }
+
+    pub fn scene_registry(&self) -> &PersistentRenderSceneDataRegistry {
+        &self.scene_registry
+    }
+
+    pub fn scene_registry_mut(&mut self) -> &mut PersistentRenderSceneDataRegistry {
+        &mut self.scene_registry
+    }
+
+    pub fn graph_executor(&self) -> &RenderGraphExecutor {
+        &self.graph_executor
+    }
+
+    pub fn graph_executor_mut(&mut self) -> &mut RenderGraphExecutor {
+        &mut self.graph_executor
+    }
+
     pub fn render_frame(&mut self, ctx: RenderFrameContext) {
         let _scope = RenderProfilerScope::render_frame();
         let frame = ctx.frame_input;
-        let _viewport = &frame.viewport;
 
+        let _viewport = &frame.viewport;
         let _scene = &frame.scene;
         let _camera_storage = frame.cameras.as_slice();
         let _rendering_mode = frame.mode;
@@ -308,6 +336,30 @@ impl FrameRenderer {
         if graph_lookup.needs_rebuild
             && rebuild_cached_graph(&frame, num_cameras, graph_lookup.entry).is_err()
         {
+            return;
+        }
+
+        let Some(final_graph) = graph_lookup.entry.final_graph() else {
+            return;
+        };
+
+        self.scene_registry.sync_scene_cameras(
+            frame.scene_id,
+            frame.cameras.iter().map(|camera| camera.camera_id),
+        );
+
+        let execution_input = RenderGraphExecutionInput {
+            graph: final_graph,
+            frame: &frame,
+            dispatcher_thread_index: ctx.dispatcher_thread_index,
+            allocator: &mut self.resource_allocator,
+            scene_registry: &mut self.scene_registry,
+            scene_id: frame.scene_id,
+            builder: ctx.builder, // moved
+            external_kickoff_wait_counter: None,
+        };
+
+        if self.graph_executor.execute(execution_input).is_err() {
             return;
         }
     }

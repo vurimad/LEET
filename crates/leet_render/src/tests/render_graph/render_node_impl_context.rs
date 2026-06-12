@@ -1,8 +1,8 @@
 use super::super::{
-    ExternalFrameResourceId, FrameBufferDesc, FrameResourceAllocator, FrameResourceDesc,
-    FrameResourceError, FrameResourceOwnership, FrameTextureDesc, RenderCameraAccess,
-    RenderFlowGroup, RenderFlowSpace, RenderGraphError, RenderGraphResult, RenderNodeFrameRuntime,
-    RenderNodeImplContext, RenderNodeImplContextInit, ResourceAllocatorPhase, ResourceRequest,
+    ExternalFrameResourceId, FrameBufferDesc, FrameResourceDesc, FrameResourceError,
+    FrameResourceOwnership, FrameTextureDesc, RenderCameraAccess, RenderFlowGroup, RenderFlowSpace,
+    RenderGraphError, RenderGraphResult, RenderNodeFrameRuntime, RenderNodeImplContext,
+    RenderNodeImplContextInit, RenderResourceAllocator, ResourceAllocatorPhase, ResourceRequest,
     ResourceUsage,
 };
 use crate::{RenderAppPlugin, RenderDevice};
@@ -63,7 +63,7 @@ fn create_external_texture(
 
 #[test]
 fn camera_and_unique_node_flow_spaces_match_context_rules() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let color = "scene_color";
     let shared = RenderNodeImplContext::rt_shared_name_tag(color);
 
@@ -87,7 +87,7 @@ fn camera_and_unique_node_flow_spaces_match_context_rules() {
 
 #[test]
 fn wrappers_record_the_same_allocator_request_stream() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -108,7 +108,8 @@ fn wrappers_record_the_same_allocator_request_stream() {
         rctx.use_end(color_tag).unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         requests[0],
         ResourceRequest::Declare { tag, .. } if tag == color_tag
@@ -130,7 +131,7 @@ fn wrappers_record_the_same_allocator_request_stream() {
 
 #[test]
 fn temp_tags_reproduce_from_the_same_request_position_during_consume() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let preconsume_temp;
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -172,7 +173,7 @@ fn temp_tags_reproduce_from_the_same_request_position_during_consume() {
 
 #[test]
 fn temp_tags_are_unique_when_request_position_advances() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -195,7 +196,7 @@ fn temp_tags_are_unique_when_request_position_advances() {
 
 #[test]
 fn explicit_use_begin_and_end_record_use_range() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -213,7 +214,8 @@ fn explicit_use_begin_and_end_record_use_range() {
         rctx.use_end(color).unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         requests[1],
         ResourceRequest::UseBegin { tag, .. } if tag == color
@@ -226,7 +228,7 @@ fn explicit_use_begin_and_end_record_use_range() {
 
 #[test]
 fn decision_returns_preconsume_value_during_consume_replay() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -250,7 +252,7 @@ fn decision_returns_preconsume_value_during_consume_replay() {
 
 #[test]
 fn is_declared_records_deterministic_request_result() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
 
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
@@ -287,7 +289,7 @@ fn is_declared_records_deterministic_request_result() {
 #[test]
 fn node_getters_forward_to_current_allocator_timeline() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let color;
 
     allocator
@@ -329,7 +331,7 @@ fn node_getters_forward_to_current_allocator_timeline() {
 
 #[test]
 fn node_getter_is_unavailable_during_preconsume() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -345,7 +347,7 @@ fn node_getter_is_unavailable_during_preconsume() {
     assert_eq!(
         err,
         FrameResourceError::InvalidOperation {
-            operation: "FrameResourceAllocator::validate_resource_retrieval_phase",
+            operation: "RenderResourceAllocator::validate_resource_retrieval_phase",
             reason: "resource retrieval is only valid during consume",
         }
     );
@@ -354,7 +356,7 @@ fn node_getter_is_unavailable_during_preconsume() {
 #[test]
 fn node_buffer_getter_forwards_to_current_allocator_timeline() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let lights;
 
     allocator
@@ -398,7 +400,7 @@ fn node_buffer_getter_forwards_to_current_allocator_timeline() {
 #[test]
 fn import_and_swap_external_wrappers_record_resource_identity() {
     let render_device = render_device();
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let history_id = ExternalFrameResourceId::new(33);
     let desc = texture_desc(64);
     let history;
@@ -437,7 +439,7 @@ fn import_and_swap_external_wrappers_record_resource_identity() {
 
 #[test]
 fn swap_external_wrappers_record_texture_and_buffer_requests() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let texture_id = ExternalFrameResourceId::new(51);
     let buffer_id = ExternalFrameResourceId::new(52);
     let texture = texture_desc(64);
@@ -462,7 +464,8 @@ fn swap_external_wrappers_record_texture_and_buffer_requests() {
             .unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         &requests[1],
         ResourceRequest::SwapWithExternal {
@@ -489,7 +492,7 @@ fn swap_external_wrappers_record_texture_and_buffer_requests() {
 
 #[test]
 fn buffer_import_wrapper_records_buffer_kind() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let buffer_id = ExternalFrameResourceId::new(40);
 
     allocator
@@ -502,7 +505,8 @@ fn buffer_import_wrapper_records_buffer_kind() {
             .unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         &requests[0],
         ResourceRequest::Import {
@@ -516,7 +520,7 @@ fn buffer_import_wrapper_records_buffer_kind() {
 
 #[test]
 fn typed_declare_helpers_preserve_descriptor_capacity_fields() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     allocator
         .set_phase(ResourceAllocatorPhase::PreConsume)
         .unwrap();
@@ -536,7 +540,8 @@ fn typed_declare_helpers_preserve_descriptor_capacity_fields() {
             .unwrap();
     }
 
-    let requests = allocator.request_group(flow_group(0)).unwrap().requests();
+    let request_group = allocator.request_group(flow_group(0)).unwrap();
+    let requests = request_group.requests();
     assert!(matches!(
         &requests[0],
         ResourceRequest::Declare {
@@ -557,7 +562,7 @@ fn typed_declare_helpers_preserve_descriptor_capacity_fields() {
 
 #[test]
 fn context_reports_uninitialized_state_loudly() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let rctx = RenderNodeImplContext::uninitialized(&mut allocator);
 
     assert!(matches!(
@@ -568,7 +573,7 @@ fn context_reports_uninitialized_state_loudly() {
 
 #[test]
 fn camera_access_split_rejects_wrong_node_kind() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let unique = RenderNodeImplContext::unique_node(&mut allocator, flow_group(0));
 
     assert!(matches!(
@@ -606,7 +611,7 @@ fn context_worker_init_copy_preserves_flow_identity_but_changes_worker() {
         123,
     )
     .with_dispatcher_thread_index(0);
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let rctx = RenderNodeImplContext::new(&mut allocator, init);
 
     let worker_init = rctx.init_for_worker(77).unwrap();
@@ -656,7 +661,7 @@ impl RenderNodeFrameRuntime for TestFrameRuntime {
 
 #[test]
 fn command_recorder_access_routes_through_frame_runtime() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let mut runtime = TestFrameRuntime::default();
     let mut rctx = RenderNodeImplContext::new_with_runtime(
         &mut allocator,
@@ -672,7 +677,7 @@ fn command_recorder_access_routes_through_frame_runtime() {
 
 #[test]
 fn viewport_outside_active_pass_fails_loudly() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let mut runtime = TestFrameRuntime::default();
     let viewport = URect::new(1, 2, 64, 32);
     let mut rctx = RenderNodeImplContext::new_with_runtime(
@@ -689,7 +694,7 @@ fn viewport_outside_active_pass_fails_loudly() {
 
 #[test]
 fn viewport_inside_active_pass_routes_through_frame_runtime() {
-    let mut allocator = FrameResourceAllocator::new();
+    let mut allocator = RenderResourceAllocator::new();
     let mut runtime = TestFrameRuntime {
         active_pass: true,
         ..Default::default()

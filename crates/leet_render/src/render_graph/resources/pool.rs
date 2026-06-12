@@ -219,13 +219,24 @@ impl FrameResourcePool {
     }
 
     pub fn cleanup_after_frame(&mut self) {
+        self.cleanup_after_frame_with_eviction(true);
+    }
+
+    pub fn cleanup_after_frame_with_eviction(&mut self, process_eviction: bool) {
         for allocation in &mut self.allocations {
             if allocation.used_this_frame {
                 allocation.age = 0;
                 allocation.used_this_frame = false;
-            } else {
+            } else if process_eviction {
                 allocation.age = allocation.age.saturating_add(1);
             }
+        }
+
+        if !process_eviction {
+            self.allocations.retain(|allocation| {
+                allocation.ownership == FrameResourceOwnership::Owned && allocation.cacheable
+            });
+            return;
         }
 
         let max_unused_age = self.max_unused_age;
@@ -324,6 +335,7 @@ impl Default for FrameResourcePool {
     }
 }
 
+#[derive(Clone)]
 pub struct FrameResourceAllocation {
     id: FrameResourceAllocationId,
     desc: FrameResourceDesc,
@@ -369,6 +381,7 @@ impl FrameResourceAllocation {
     }
 }
 
+#[derive(Clone)]
 pub enum FrameResource {
     Texture(FrameTextureResource),
     Buffer(FrameBufferResource),
@@ -390,6 +403,7 @@ impl FrameResource {
     }
 }
 
+#[derive(Clone)]
 pub struct FrameTextureResource {
     texture: wgpu::Texture,
     default_view: wgpu::TextureView,
@@ -405,6 +419,7 @@ impl FrameTextureResource {
     }
 }
 
+#[derive(Clone)]
 pub struct FrameBufferResource {
     buffer: wgpu::Buffer,
 }

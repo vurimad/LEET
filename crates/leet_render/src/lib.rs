@@ -16,9 +16,9 @@ pub use app::{
 pub use camera::{
     sync_render_camera_storage, CameraDependencyFlags, CameraManagement, CameraPlugin,
     CameraPrepareContext, CameraRenderPolicy, PreparedCameraDependency, PreparedCameraHistory,
-    PreparedFrameCamera, RenderCamera, RenderCameraFeatures, RenderCameraRegistration,
-    RenderCameraRegistrationRef, RenderCameraStorage, MAX_CAMERA_DEPENDENCIES,
-    MAX_CAMERA_DEPENDENCY_DEPTH,
+    PreparedFrameCamera, PreparedFrameCameraSharedData, PreparedFrameViews, RenderCamera,
+    RenderCameraFeatures, RenderCameraRegistration, RenderCameraRegistrationRef,
+    RenderCameraStorage, MAX_CAMERA_DEPENDENCIES, MAX_CAMERA_DEPENDENCY_DEPTH,
 };
 pub use extract::{Extract, ExtractionPlugin};
 pub use leet_core::{Leeror, LeetResult};
@@ -34,19 +34,19 @@ pub use render_graph::{
     FrameCommandPassKind, FrameCommandRecorderSlot, FrameCommandRecorderState,
     FrameCommandRecorders, FrameCommandSubmission, FrameCommandSyncEvent, FrameLifetimeSolution,
     FrameResource, FrameResourceAllocation, FrameResourceAllocationClass,
-    FrameResourceAllocationId, FrameResourceAllocator, FrameResourceDesc, FrameResourceError,
-    FrameResourceFlowGroup, FrameResourceKind, FrameResourceOwnership, FrameResourcePool,
-    FrameResourcePoolAssignment, FrameResourcePoolCandidate, FrameResourcePoolPlan,
-    FrameResourceRequestTime, FrameResourceResult, FrameResourceReuseRejection,
-    FrameResourceReuseRejectionReason, FrameResourceShape, FrameTextureDesc, FrameTextureResource,
-    GraphImportMap, ImportedFrameResource, NodeGroupId, NoopRenderGraphCoreRunnerHooks,
-    QueueSyncKind, RenderCameraAccess, RenderDependencyData, RenderDependencyId, RenderFlowAutoId,
+    FrameResourceAllocationId, FrameResourceDesc, FrameResourceError, FrameResourceFlowGroup,
+    FrameResourceKind, FrameResourceOwnership, FrameResourcePool, FrameResourcePoolAssignment,
+    FrameResourcePoolCandidate, FrameResourcePoolPlan, FrameResourceRequestTime,
+    FrameResourceResult, FrameResourceReuseRejection, FrameResourceReuseRejectionReason,
+    FrameResourceShape, FrameTextureDesc, FrameTextureResource, GraphImportMap,
+    ImportedFrameResource, NodeGroupId, NoopRenderGraphExecutorHooks, QueueSyncKind,
+    RenderCameraAccess, RenderDependencyData, RenderDependencyId, RenderFlowAutoId,
     RenderFlowGroup, RenderFlowName, RenderFlowNameTag, RenderFlowSpace, RenderGlobalBindingMask,
     RenderGraphCache, RenderGraphCacheEntry, RenderGraphCacheLookup, RenderGraphCameraBuildData,
-    RenderGraphCoreRunReport, RenderGraphCoreRunner, RenderGraphCoreRunnerHooks,
-    RenderGraphCoreRunnerState, RenderGraphDependencyCounters,
-    RenderGraphDependencyExecutionReport, RenderGraphError, RenderGraphJobNode,
-    RenderGraphJobPayload, RenderGraphResult, RenderGraphShapeHash, RenderGraphShapeHashBuilder,
+    RenderGraphDependencyCounters, RenderGraphDependencyExecutionReport, RenderGraphError,
+    RenderGraphExecutionInput, RenderGraphExecutionReport, RenderGraphExecutor,
+    RenderGraphExecutorHooks, RenderGraphExecutorState, RenderGraphJobNode, RenderGraphJobPayload,
+    RenderGraphResult, RenderGraphShapeHash, RenderGraphShapeHashBuilder,
     RenderNodeBeginRenderTargets, RenderNodeCleanupBatchData, RenderNodeCommandListUsage,
     RenderNodeData, RenderNodeDebugName, RenderNodeDeclareResources, RenderNodeDependencyKind,
     RenderNodeEndFrame, RenderNodeEndRender, RenderNodeEndRenderTargets,
@@ -56,9 +56,9 @@ pub use render_graph::{
     RenderNodeImplStore, RenderNodeKind, RenderNodeParameters, RenderNodePresent,
     RenderNodeProcessReport, RenderNodeProcessState, RenderNodeResourceDeclaration, RenderNodeRole,
     RenderNodeStartRender, RenderNodeSubtype, RenderNodeSynchronize, RenderNodeView,
-    RenderQueueKind, RequestGroup, RequestGroupAction, RequestRange, ResourceAllocatorPhase,
-    ResourceRequest, ResourceRequestId, ResourceUsage, TagLifetime, TagLifetimeEvent,
-    TagLifetimeEventKind,
+    RenderQueueKind, RenderResourceAllocator, RequestGroup, RequestGroupAction, RequestRange,
+    ResourceAllocatorPhase, ResourceRequest, ResourceRequestId, ResourceUsage, TagLifetime,
+    TagLifetimeEvent, TagLifetimeEventKind,
 };
 pub use render_target::{FrameOutput, FrameTargetResolver, RenderViewport};
 pub use rendering::{
@@ -78,11 +78,16 @@ pub use rhi_wgpu::{
 };
 pub use scene::{
     render_device_from_wgpu, render_queue_from_wgpu, AtomicAppendBuffer, AtomicPod, BufferUsages,
-    DynamicStructuredStorageBuffer, FrameAppendBuffer, GpuArrayBufferable, GpuInstance,
-    GpuInstanceIndex, GpuInstanceInput, GpuOnlyBuffer, GpuOutputArrayBuffer, GpuScene,
-    GpuSceneFakeGpuEmulation, GpuScenePhase, GpuScenePlugin, RawArrayBuffer, RenderProxy,
-    RenderProxyDescriptor, RenderProxyId, RenderProxyKind, RenderingPreprocessingPlugin,
-    ShaderSize, ShaderType, StructuredStorageBuffer, UniformBuffer, WriteBufferRangeError,
+    DynamicStructuredStorageBuffer, FrameAppendBuffer, FrameCustomDataPrepareContext,
+    GpuArrayBufferable, GpuInstance, GpuInstanceIndex, GpuInstanceInput, GpuOnlyBuffer,
+    GpuOutputArrayBuffer, GpuScene, GpuSceneFakeGpuEmulation, GpuScenePhase, GpuScenePlugin,
+    PerCameraStorageCustomData, PerCameraStorageCustomDataSet, PersistentRenderSceneData,
+    PersistentRenderSceneDataRegistry, PersistentRenderSceneDataRegistrySyncReport,
+    PersistentRenderSceneDataSyncReport, PreparedCameraCustomData, PreparedCustomDataSet,
+    PreparedFrameSceneData, PreparedSceneCustomData, RawArrayBuffer, RenderProxy,
+    RenderProxyDescriptor, RenderProxyId, RenderProxyKind, RenderSceneId,
+    RenderingPreprocessingPlugin, SceneStorageCustomData, SceneStorageCustomDataSet, ShaderSize,
+    ShaderType, StructuredStorageBuffer, UniformBuffer, WriteBufferRangeError,
 };
 pub use texture::{ManualTextureView, ManualTextureViews, TexturePlugin};
 pub use window::{

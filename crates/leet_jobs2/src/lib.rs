@@ -25,7 +25,7 @@ pub use builder::{Builder, Fence};
 pub use config::JobSystemConfig;
 pub use counter::Counter;
 pub use deferral::CompletionDeferral;
-pub use dispatcher::LeetJobSystem;
+pub use dispatcher::{DispatcherHandle, LeetJobSystem};
 pub use job_decl::{JobHint, RunContext};
 pub use priority::{Priority, ScheduleParam};
 

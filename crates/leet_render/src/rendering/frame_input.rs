@@ -6,8 +6,8 @@ use bevy_math::UVec2;
 
 use crate::{
     CameraPrepareContext, FrameOutput, FrameTargetResolver, GpuScene, GpuScenePhase,
-    PreparedFrameCamera, RenderCameraRegistrationRef, RenderCameraStorage, RenderViewport,
-    RenderWindowRegistry,
+    PreparedFrameCamera, PreparedFrameViews, RenderCameraRegistrationRef, RenderCameraStorage,
+    RenderSceneId, RenderViewport, RenderWindowRegistry,
 };
 
 use super::{RenderFrameError, RenderFrameResult};
@@ -18,7 +18,8 @@ pub struct RenderCameraId(pub u64);
 pub struct FrameInput {
     pub viewport: RenderViewport,
     pub output: FrameOutput,
-    pub cameras: Vec<PreparedFrameCamera>,
+    pub scene_id: RenderSceneId,
+    pub cameras: PreparedFrameViews,
     pub scene: FrameGpuScene,
     pub timing: FrameTiming,
     pub mode: FrameRenderingMode,
@@ -141,6 +142,10 @@ pub enum FramePurpose {
 }
 
 impl FramePurpose {
+    pub const fn is_blank(self) -> bool {
+        matches!(self, Self::Blank)
+    }
+
     pub const fn requires_stable_dissolves(self) -> bool {
         matches!(
             self,
@@ -185,6 +190,7 @@ pub enum FrameDebugGraphView {
 #[derive(Clone, Debug)]
 pub struct FrameInputBuilder {
     target_groups: Vec<FrameInputTargetGroup>,
+    scene_id: RenderSceneId,
     scene: FrameGpuScene,
     timing: FrameTiming,
     mode: FrameRenderingMode,
@@ -198,6 +204,7 @@ impl FrameInputBuilder {
     pub fn construct() -> Self {
         Self {
             target_groups: Vec::new(),
+            scene_id: RenderSceneId::default(),
             scene: FrameGpuScene::empty(),
             timing: FrameTiming::default(),
             mode: FrameRenderingMode::default(),
@@ -274,6 +281,7 @@ impl FrameInputBuilder {
             frame_inputs.push(build_frame_input(
                 viewport,
                 output,
+                self.scene_id,
                 cameras,
                 self.scene.clone(),
                 self.timing,
@@ -338,6 +346,7 @@ impl FrameInputTargetGroup {
 fn build_frame_input(
     viewport: RenderViewport,
     output: FrameOutput,
+    scene_id: RenderSceneId,
     cameras: Vec<PreparedFrameCamera>,
     scene: FrameGpuScene,
     timing: FrameTiming,
@@ -356,7 +365,8 @@ fn build_frame_input(
     Ok(FrameInput {
         viewport,
         output,
-        cameras,
+        scene_id,
+        cameras: PreparedFrameViews::new(cameras),
         scene,
         timing,
         mode,
